@@ -15,9 +15,10 @@ from pyrogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    ChatAction
+    InlineKeyboardButton
 )
+from pyrogram.enums import ChatAction  # تم التصحيح: النقل من types الى enums
+
 import pyromod.listen  # تفعيل خاصية الانتظار
 
 # Project Imports
@@ -33,6 +34,7 @@ from .engine import (
 )
 
 # Media Engine Import
+# تأكد من وجود هذا الملف او قم بتعليق السطر اذا لم تنشئه بعد
 from .media_engine import process_media
 
 # ------------------------------------------------------------------
