@@ -17,7 +17,7 @@ from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
-from pyrogram.enums import ChatAction  # تم التصحيح: النقل من types الى enums
+from pyrogram.enums import ChatAction 
 
 import pyromod.listen  # تفعيل خاصية الانتظار
 
@@ -34,7 +34,6 @@ from .engine import (
 )
 
 # Media Engine Import
-# تأكد من وجود هذا الملف او قم بتعليق السطر اذا لم تنشئه بعد
 from .media_engine import process_media
 
 # ------------------------------------------------------------------
@@ -220,8 +219,8 @@ async def transform_handler(client: Client, message: Message):
         output_file = None
         
         try:
-            # تحميل الملف
-            await client.send_chat_action(chat_id, ChatAction.DOWNLOAD_DOCUMENT)
+            # تحميل الملف (تم التصحيح هنا)
+            await client.send_chat_action(chat_id, ChatAction.TYPING) # استخدمنا TYPING بدلاً من DOWNLOAD_DOCUMENT
             input_file = await target_message.download()
             
             # استدعاء محرك الميديا
@@ -235,8 +234,12 @@ async def transform_handler(client: Client, message: Message):
             await client.send_chat_action(chat_id, ChatAction.UPLOAD_DOCUMENT)
             caption_text = f"تم التحويل بنجاح.\nالطلب: {instructions}"
             
-            if output_file.endswith(".mp4"):
-                await message.reply_video(output_file, caption=caption_text)
+            if output_file.endswith(".mp4") or output_file.endswith(".mp3"):
+                # اذا كان صوت فقط نرسله كصوت
+                if output_file.endswith(".mp3"):
+                     await message.reply_audio(output_file, caption=caption_text)
+                else:
+                     await message.reply_video(output_file, caption=caption_text)
             else:
                 await message.reply_photo(output_file, caption=caption_text)
             
@@ -256,8 +259,6 @@ async def transform_handler(client: Client, message: Message):
 # زر الإلغاء (Callback)
 @app.on_callback_query(filters.regex("^cancel_transform$"))
 async def cancel_transform_callback(client: Client, query: CallbackQuery):
-    # نستخدم client.stop_listening لإنهاء الانتظار في pyromod إذا كان مدعوماً
-    # أو ببساطة نحذف الرسالة، مما سيجعل التايمر ينتهي أو المستخدم يرسل رسالة جديدة
     await query.message.delete()
     await query.answer("تم الالغاء")
 
