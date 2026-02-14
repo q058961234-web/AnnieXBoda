@@ -12,7 +12,9 @@ This package contains:
 """
 
 # تحميل البرومبتات
-from . import prompts  # noqa: F401
+# تأكد من وجود ملف prompts.py بجانب هذا الملف لتجنب خطأ آخر
+# from . import prompts  # noqa: F401 
+# (تم تعليقه مؤقتاً لتجنب خطأ اذا لم يكن الملف موجوداً، فك التعليق لو الملف موجود)
 
 # تحميل محرك الذكاء المطور
 from .engine import (
@@ -23,13 +25,14 @@ from .engine import (
 )  # noqa: F401
 
 # تحميل الهاندلرز لتسجيل الأوامر
-from . import handlers  # noqa: F401
+# from . import handlers  # noqa: F401
+# (تم تعليقه مؤقتاً لتجنب خطأ Circular Import لو الهاندلر بيستدعي المحرك)
 
 __all__ = [
-    "prompts",
+    # "prompts",
     "ENGINE",
     "ask_ollama_stream",
     "clear_user_memory",
     "toggle_model",
-    "handlers",
+    # "handlers",
 ]
