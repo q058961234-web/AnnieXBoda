@@ -56,8 +56,6 @@ class MemoryManager:
         self._last_access[user_id] = time.time()
 
         if len(self._history[user_id]) > MAX_HISTORY_LENGTH:
-            # Keep system prompt if exists, and trim older messages
-            # Simply slicing for now to keep it robust
             self._history[user_id] = self._history[user_id][-MAX_HISTORY_LENGTH:]
 
     def clear_history(self, user_id: int):
@@ -98,7 +96,7 @@ class EngineState:
             "كن مهذبا ومحترفا."
         )
 
-# Exported Instance (Fixed Name to match __init__)
+# Exported Instance
 ENGINE = EngineState()
 
 # ------------------------------------------------------------------
@@ -146,7 +144,6 @@ async def ask_ollama_stream(
                     if not line:
                         continue
                     try:
-                        # Decode bytes to string
                         line_text = line.decode('utf-8')
                         chunk_data = json.loads(line_text)
                         
@@ -201,6 +198,10 @@ def toggle_model(enable: Optional[bool] = None) -> bool:
         ENGINE.enabled = not ENGINE.enabled
     return ENGINE.enabled
 
+def set_engine_state(enabled: bool):
+    """تعيين حالة المحرك (مطلوبة من قبل handlers.py)"""
+    ENGINE.enabled = enabled
+
 def get_engine_status():
     return {
         "model": CURRENT_MODEL,
@@ -208,10 +209,12 @@ def get_engine_status():
         "active_users": len(MEMORY._history)
     }
 
+# التأكد من تصدير جميع الدوال المطلوبة
 __all__ = [
     "ENGINE", 
     "ask_ollama_stream", 
     "clear_user_memory", 
     "toggle_model", 
+    "set_engine_state", 
     "get_engine_status"
 ]
