@@ -1,7 +1,6 @@
 # file: AnnieXMedia/platforms/Youtube.py
-# Robust YouTube resolver for AnnieXMedia (2026)
-# Fixed: Added download_thumb method logic & Search Function via py-yt-search
-# Change: Enabled Node.js Signature Solving & Web Client
+# H200 STABLE: Fixed Event Loop & NoneType Issues
+# Optimized for Python 3.13 & aiohttp 3.10+
 
 import asyncio
 import contextlib
@@ -21,7 +20,7 @@ import yt_dlp
 try:
     from py_yt_search import AsyncSearch
 except ImportError:
-    pass
+    AsyncSearch = None
 
 # Optional faster JSON parser
 try:
@@ -51,7 +50,7 @@ META_CACHE_TTL = 3600
 _thread_pool = ThreadPoolExecutor(max_workers=MAX_YTDLP_THREADS)
 _extract_sema = asyncio.Semaphore(MAX_CONCURRENT_EXTRACTS)
 
-_aio_connector = aiohttp.TCPConnector(limit=AIO_CONN_LIMIT, ssl=False, keepalive_timeout=300)
+# 🛑 FIX: Removed global connector creation to prevent "no running event loop"
 _aio_session: Optional[aiohttp.ClientSession] = None
 
 _direct_cache: Dict[str, Tuple[int, str]] = {}
@@ -77,10 +76,12 @@ def get_cookie_file() -> Optional[str]:
             continue
     return None
 
+# 🛑 FIX: Safe session creation
 async def _ensure_aio_session() -> aiohttp.ClientSession:
     global _aio_session
     if _aio_session is None or _aio_session.closed:
-        _aio_session = aiohttp.ClientSession(connector=_aio_connector, raise_for_status=False)
+        connector = aiohttp.TCPConnector(limit=AIO_CONN_LIMIT, ssl=False, keepalive_timeout=300)
+        _aio_session = aiohttp.ClientSession(connector=connector)
     return _aio_session
 
 async def _exec_proc(*args: str, timeout: int = 10) -> Tuple[bytes, bytes]:
@@ -163,7 +164,6 @@ class YouTubeAPI:
         self.pool = _thread_pool
         self.sema = _extract_sema
         self.cookie = get_cookie_file()
-        # impersonation detection
         try:
             import curl_cffi
             self.impersonate = True
@@ -209,21 +209,20 @@ class YouTubeAPI:
                 except: continue
         return None
 
-    # 🛑 استخدام py-yt-search للبحث السريع
+    # Search: Hybrid Approach
     async def search(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
-        try:
-            from py_yt_search import AsyncSearch
-            search = AsyncSearch(query, limit=limit)
-            res = await search.search()
-            if res:
-                return [{
-                    "title": x.get("title", "Unknown"),
-                    "vidid": x.get("id", ""),
-                    "duration": x.get("duration", "")
-                } for x in res]
-        except: pass
+        if AsyncSearch:
+            try:
+                search = AsyncSearch(query, limit=limit)
+                res = await search.search()
+                if res:
+                    return [{
+                        "title": x.get("title", "Unknown"),
+                        "vidid": x.get("id", ""),
+                        "duration": x.get("duration", "")
+                    } for x in res]
+            except: pass
         
-        # Fallback
         cmd = ["yt-dlp", "--dump-json", f"ytsearch{limit}:{query}", "--flat-playlist", "--no-warnings", "--skip-download"]
         if self.cookie: cmd.extend(["--cookies", self.cookie])
         out, _ = await _exec_proc(*cmd, timeout=10)
@@ -318,8 +317,7 @@ class YouTubeAPI:
         except: pass
         return out, prepared
 
-    # 🛑 الجزء المسؤول عن الرابط المباشر
-    # تم الإبقاء على Web Client (كما طلبت) + Node.js سيقوم بالعمل الصعب
+    # 🛑 Direct Link (Web Client + Node.js)
     async def get_direct_link(self, link: str, *, prefer_audio: bool = True) -> Optional[str]:
         prepared = _normalize_link(link)
         if not prepared: return None
@@ -339,7 +337,6 @@ class YouTubeAPI:
                 ydl_opts = {
                     "quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True,
                     "socket_timeout": YTDLP_SOCKET_TIMEOUT,
-                    # Web Client كما طلبت (مع Node.js سيعمل)
                     "extractor_args": {"youtube": {"player_client": ["web"]}},
                 }
                 if self.cookie: ydl_opts["cookiefile"] = self.cookie
@@ -350,7 +347,7 @@ class YouTubeAPI:
             info = await loop.run_in_executor(self.pool, _extract_info_blocking)
 
         if not info or (isinstance(info, dict) and info.get("_err")):
-            # Fallback (Just -g)
+            # Fallback
             cmd = ["yt-dlp", "-g", "--no-warnings", "--force-ipv4", prepared]
             if self.cookie: cmd = ["yt-dlp", "-g", "--cookies", self.cookie, "--no-warnings", "--force-ipv4", prepared]
             out, _ = await _exec_proc(*cmd, timeout=12)
@@ -367,16 +364,15 @@ class YouTubeAPI:
             async with _direct_cache_lock: _direct_cache[key] = (expiry, top_url)
             return top_url
         
-        # ... (rest of logic unchanged) ...
         return None
 
-    # 🛑 الجزء المسؤول عن التحميل
-    # تم الإبقاء على Web Client مع Node.js
+    # 🛑 Downloader (Robust)
     async def download(self, link: str, mystic: Any, video: Union[bool, str] = None, videoid: Union[bool, str, None] = None, songaudio: Union[bool, str] = None, songvideo: Union[bool, str] = None, format_id: Union[bool, str] = None, title: Union[bool, str] = None) -> Tuple[Optional[str], bool]:
         is_video = bool(video or songvideo)
         prepared = _normalize_link(link, videoid)
-        vid = str(int(time.time()))
+        if not prepared: return None, False  # FIX: Prevent None link
         
+        vid = str(int(time.time()))
         downloads_base = "/dev/shm" if os.path.exists("/dev/shm") else os.path.abspath("downloads")
         ram_base = os.path.join(downloads_base, vid)
         os.makedirs(os.path.dirname(ram_base), exist_ok=True)
@@ -392,10 +388,8 @@ class YouTubeAPI:
                     "cookiefile": get_cookie_file(),
                     "quiet": True,
                     "force_ipv4": True,
-                    # Web Client كما طلبت
                     "extractor_args": {"youtube": {"player_client": ["web"]}},
                     "prefer_ffmpeg": True,
-                    # إضافة مهمة: تجاهل الأخطاء البسيطة
                     "ignoreerrors": True,
                     "check_formats": False,
                 }
@@ -404,6 +398,7 @@ class YouTubeAPI:
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(prepared, download=True)
+                    if not info: return None
                     path = ydl.prepare_filename(info)
                     if not is_video and not path.endswith(".mp3"):
                         mp3 = os.path.splitext(path)[0] + ".mp3"
