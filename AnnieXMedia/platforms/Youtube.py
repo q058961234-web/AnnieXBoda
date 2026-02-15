@@ -1,5 +1,5 @@
 # file: AnnieXMedia/platforms/Youtube.py
-# 🚀 H200 Hybrid Engine (2026)
+# 🚀 H200 Hybrid Engine (2026) - Fixed URL Attribute Error
 # Merged Features:
 # 1. Ultra-Fast Metadata via 'py-yt-search' (Instant Track/Search).
 # 2. Robust Stream Extraction via 'yt-dlp' (Native/Aria2 Support).
@@ -151,6 +151,27 @@ class YouTubeAPI:
             self.impersonate = True
         except:
             self.impersonate = False
+
+    # 🛑 الدالة التي كانت مفقودة (تمت إعادتها لإصلاح الـ Error)
+    async def url(self, message) -> Optional[str]:
+        """Extract URL from a pyrogram Message-like object."""
+        if not message: return None
+        msgs = [message]
+        if getattr(message, "reply_to_message", None): msgs.append(message.reply_to_message)
+        for msg in msgs:
+            text = getattr(msg, "text", None) or getattr(msg, "caption", None) or ""
+            entities = (getattr(msg, "entities", None) or []) + (getattr(msg, "caption_entities", None) or [])
+            for ent in entities:
+                try:
+                    if getattr(ent, "url", None): return ent.url.split("&si")[0]
+                    # Handle Text Links logic
+                    t = str(getattr(ent, "type", ""))
+                    if "URL" in t or "url" in t: 
+                        off = getattr(ent, "offset", 0)
+                        ln = getattr(ent, "length", 0)
+                        return text[off:off+ln].split("&si")[0]
+                except: pass
+        return None
 
     # --- Cache Utils ---
     async def invalidate_direct_cache(self, vid_or_link: Optional[str]) -> None:
