@@ -18,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # ==================================================
-# 🛠️ تسطيب الأدوات (Node.js ضروري لفك تشفير يوتيوب)
+# 🛠️ تسطيب الأدوات (Node.js + Python 3.13)
 # ==================================================
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -27,9 +27,7 @@ RUN apt-get update && apt-get upgrade -y && \
     libgl1 libglib2.0-0 libsm6 libxext6 \
     imagemagick ghostscript libsndfile1 fontconfig \
     build-essential libffi-dev cmake \
-    # 🔥 Node.js (السر لفك التشفير)
     pciutils lshw nodejs npm && \
-    # إضافة بايثون 3.13
     add-apt-repository ppa:deadsnakes/ppa -y && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -67,15 +65,14 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 # ==================================================
 COPY requirements.txt .
 
-# 1. تنظيف المتطلبات
-RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt
+# 1. تنظيف وتسطيب المتطلبات
+RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt && \
+    pip install --no-cache-dir --break-system-packages --ignore-installed -r filtered.txt
 
-# 2. تسطيب الأساسيات
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed -r filtered.txt
-
-# 3. تسطيب المكتبات الثقيلة + py-yt-search
+# 2. تسطيب المكتبات الثقيلة + py-yt-search (المكتبة الجديدة)
 RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
-    "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy py-yt-search \
+    "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy \
+    py-yt-search \
     https://github.com/yt-dlp/yt-dlp/archive/master.zip
 
 # ==================================================
