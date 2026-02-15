@@ -1,95 +1,114 @@
-FROM python:3.13-slim
+# ==================================================
+# 🏗️ المرحلة 1: الأساس (NVIDIA CUDA 12.6 - Ubuntu 24.04)
+# ==================================================
+FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
 
 # ==================================================
-# ⚡ إعدادات البيئة (الأداء الأقصى)
+# ⚡ إعدادات البيئة (بدون تدخل منك)
 # ==================================================
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     DEBIAN_FRONTEND=noninteractive \
-    # توجيه الموديلات للهارد الدائم
-    OLLAMA_MODELS="/data/ollama" \
+    # تفعيل الكارت غصب عن النظام
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
+    # مسارات الذكاء الاصطناعي
+    OLLAMA_MODELS="/app/ollama_models" \
     OLLAMA_HOST="0.0.0.0" \
-    IMAGEMAGICK_BINARY="/usr/bin/convert"
+    # تحسينات بايثون 3.13
+    PYTHON_GIL=0
 
 WORKDIR /app
 
 # ==================================================
-# 🛠️ تثبيت أدوات النظام (شامل aria2 و zstd)
+# 🛠️ تسطيب الأدوات وتجهيز Python 3.13
 # ==================================================
-RUN apt-get update && \
+RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-    # أدوات الشبكة والتحميل السريع
-    curl git wget aria2 gnupg2 unzip zip procps zstd \
-    # أدوات البناء الضرورية (عشان ntgcalls تتسطب صح)
-    build-essential libffi-dev zlib1g-dev cmake \
-    # مكتبات الميديا والجرافيك (بدون كراش)
-    ffmpeg libsm6 libxext6 libgl1 libglib2.0-0 \
-    imagemagick ghostscript \
-    # مكتبات الصوت والخطوط
-    libsndfile1 fontconfig && \
-    # ✅ إصلاح سياسة ImageMagick (الجوكر *)
-    sed -i 's/none/read,write/g' /etc/ImageMagick-*/policy.xml || true && \
-    # تنظيف لتقليل الحجم
+    software-properties-common wget curl git \
+    aria2 zstd xz-utils unzip zip \
+    libgl1 libglib2.0-0 libsm6 libxext6 \
+    imagemagick ghostscript libsndfile1 fontconfig \
+    build-essential libffi-dev cmake && \
+    # إضافة بايثون 3.13
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.13 python3.13-dev python3.13-venv python3-pip && \
+    # تعيين بايثون 3.13 كافتراضي
+    ln -sf /usr/bin/python3.13 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.13 /usr/bin/python && \
+    # إصلاح مشاكل ImageMagick
+    sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml || true && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ==================================================
-# 🧠 تثبيت محرك الذكاء الاصطناعي (Ollama)
+# 🎥 تنزيل FFmpeg (نسخة H200 NVENC)
+# ==================================================
+RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz && \
+    tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz && \
+    cp ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/bin/ffmpeg && \
+    cp ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/bin/ffprobe && \
+    chmod +x /usr/bin/ffmpeg /usr/bin/ffprobe && \
+    rm -rf ffmpeg-master-latest-linux64-gpl*
+
+# ==================================================
+# 🧠 تجهيز Ollama (أوتوماتيك)
 # ==================================================
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # ==================================================
-# 🐍 تثبيت مكتبات البايثون
+# 🐍 تسطيب المكتبات
 # ==================================================
-RUN pip install --upgrade pip setuptools wheel
+RUN python3 -m pip install --upgrade pip setuptools wheel
 
 COPY requirements.txt .
 
-# فلتر لمنع تضارب المكتبات القديمة
+# تنظيف المتطلبات وتسطيبها
 RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt && \
     pip install --no-cache-dir -r filtered.txt
 
-# تثبيت يدوي للمكتبات الحرجة لضمان وجودها
+# تسطيب المكتبات الثقيلة يدوياً لضمان التوافق
 RUN pip install --no-cache-dir \
-    opencv-python-headless rembg[gpu] \
-    numpy pillow uvloop g4f curl_cffi ollama moviepy
+    "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy \
+    https://github.com/yt-dlp/yt-dlp/archive/master.zip
 
 # ==================================================
-# 📂 نسخ ملفات البوت وتجهيز المجلدات
+# 📂 نقل الملفات وتجهيز المجلدات
 # ==================================================
 COPY . .
 
-# إنشاء مجلدات الرام (للسرعة) والهارد (للحفظ)
-RUN mkdir -p /dev/shm/AnnieDownloads && chmod 777 /dev/shm/AnnieDownloads
-RUN mkdir -p /data/ollama && chmod 777 /data/ollama
+# إنشاء مجلدات العمل وإعطاء صلاحيات كاملة (عشان لو مفيش رووت)
+RUN mkdir -p /app/downloads /app/cache /app/ollama_models && \
+    chmod -R 777 /app
 
 # ==================================================
-# 🚀 سكريبت الإقلاع المتوازي (Parallel Boot)
+# 🚀 سكريبت التشغيل الذكي (هو ده اللي بيحل مشكلة عدم وجود تيرمنال)
 # ==================================================
-# هذا السكريبت يمنع كويب من قتل البوت أثناء التحميل
+# السكريبت ده هيشتغل أول ما البوت يترفع، وهيعمل كل حاجة بالنيابة عنك
 RUN echo '#!/bin/bash\n\
 \n\
-echo "🔴 [TitanOS] Starting Ollama Service..."\n\
-ollama serve > /var/log/ollama.log 2>&1 &\n\
+echo "🟢 [Auto-Pilot] Starting System..."\n\
 \n\
-echo "🟢 [TitanOS] Starting Bot Interface (Opening Port 8000)..."\n\
-# نشغل البوت في الخلفية فوراً عشان الـ Health Check ينجح\n\
+# 1. تشغيل Ollama في الخلفية\n\
+ollama serve > /app/ollama.log 2>&1 &\n\
+sleep 5\n\
+\n\
+# 2. تشغيل البوت فوراً (عشان المنصة تفتكره شغال ومتقفلوش)\n\
+# بنستخدم Free-Threading لو متاح لسرعة خرافية\n\
+export PYTHON_GIL=0\n\
 python3 run.py &\n\
-PID=$!\n\
+BOT_PID=$!\n\
 \n\
-sleep 10\n\
+echo "✅ [Bot] Started with PID $BOT_PID"\n\
 \n\
-echo "🔵 [TitanOS] Checking AI Models..."\n\
-if ollama list | grep -q "deepseek-r1:70b"; then\n\
-    echo "✅ [AI] Model found in persistent storage! Ready to rock."\n\
-else\n\
-    echo "⚠️ [AI] Model not found. Downloading DeepSeek-R1 70B (Background)..."\n\
-    # التحميل هيتم والبوت شغال، عشان السيرفر ميفصلش\n\
-    ollama pull deepseek-r1:70b\n\
-fi\n\
+# 3. تحميل موديل الذكاء الاصطناعي في الخلفية (مش هيعطل البوت)\n\
+echo "🧠 [AI] Downloading DeepSeek Model in background..."\n\
+(sleep 10 && ollama pull deepseek-r1:70b > /dev/null 2>&1) &\n\
 \n\
-# مراقبة البوت لضمان استمرار عمل الحاوية\n\
-wait $PID\n\
+# 4. مراقبة البوت (لو وقع السكريبت يقفل والمنصة تعمل ريستارت)\n\
+wait $BOT_PID\n\
 ' > start.sh && chmod +x start.sh
 
 CMD ["./start.sh"]
