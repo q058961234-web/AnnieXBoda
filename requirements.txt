@@ -66,3 +66,9 @@ curl_cffi
 
 # ===== Patches =====
 git+https://github.com/q058961234-web/youtube-search-python.git
+
+# ===== 🛠️ Missing Media Libs (Added as requested, NO VERSIONS) =====
+bing_image_downloader
+imageio
+scipy
+scikit-image
