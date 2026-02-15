@@ -14,7 +14,7 @@ from PIL import Image
 from rembg import remove
 
 # ------------------------------------------------------------------
-# 0. COMPATIBILITY LAYER (The Smart Part)
+# 0. SMART IMPORT (الحل السحري لمنع الكراش)
 # ------------------------------------------------------------------
 try:
     # محاولة استدعاء النسخة الحديثة (v2.0+)
@@ -26,7 +26,7 @@ except ImportError:
         from moviepy.editor import VideoFileClip, vfx
         MOVIEPY_AVAILABLE = True
     except ImportError:
-        # إذا فشل الاثنين، نعتمد على FFmpeg الخام
+        # إذا فشل الاثنين، نعتمد على FFmpeg فقط
         MOVIEPY_AVAILABLE = False
 
 # ------------------------------------------------------------------
@@ -44,9 +44,7 @@ if not os.path.exists(TEMP_DIR):
 def _run_ffmpeg(cmd_list):
     """تشغيل أوامر FFmpeg بأمان"""
     try:
-        # تحويل القيم لـ string لضمان عدم حدوث خطأ
         cmd_str = [str(x) for x in cmd_list]
-        logger.info(f"Running FFmpeg: {' '.join(cmd_str)}")
         subprocess.run(cmd_str, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg Error: {e.stderr.decode()}")
@@ -61,30 +59,18 @@ def _apply_anime_filter(file_path: str, output_path: str):
     if img is None:
         raise FileNotFoundError(file_path)
 
-    # تحسين الالوان وتنعيمها
     color = img
     for _ in range(2):
         color = cv2.bilateralFilter(color, d=9, sigmaColor=9, sigmaSpace=7)
     
-    # تحديد الحواف
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.medianBlur(gray, 7)
     edges = cv2.adaptiveThreshold(
         blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blockSize=9, C=2
     )
     
-    # الدمج
     color = cv2.bitwise_and(color, color, mask=edges)
-    
-    # زيادة التشبع
-    hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    s = cv2.add(s, 40)
-    v = cv2.add(v, 20)
-    final_hsv = cv2.merge((h, s, v))
-    final_img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-    
-    cv2.imwrite(output_path, final_img)
+    cv2.imwrite(output_path, color)
 
 def _remove_bg_image(file_path: str, output_path: str):
     """عزل الخلفية باستخدام AI"""
@@ -97,16 +83,11 @@ def _remove_bg_image(file_path: str, output_path: str):
 def _upscale_image_4k(file_path: str, output_path: str):
     """رفع دقة الصورة"""
     img = cv2.imread(file_path)
-    if img is None:
-        raise FileNotFoundError(file_path)
-
     upscaled = cv2.resize(img, (3840, 2160), interpolation=cv2.INTER_LANCZOS4)
-    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    sharpened = cv2.filter2D(upscaled, -1, kernel)
-    cv2.imwrite(output_path, sharpened)
+    cv2.imwrite(output_path, upscaled)
 
 # ------------------------------------------------------------------
-# 2. FFMPEG FALLBACK FUNCTIONS (The Safety Net)
+# 2. FFMPEG FALLBACK FUNCTIONS
 # ------------------------------------------------------------------
 def _ffmpeg_extract_audio(input_path, output_path):
     _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-vn", "-acodec", "libmp3lame", "-q:a", "2", output_path])
@@ -114,20 +95,8 @@ def _ffmpeg_extract_audio(input_path, output_path):
 def _ffmpeg_create_gif(input_path, output_path):
     _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-t", "7", "-vf", "fps=12,scale=iw:-1:flags=lanczos", output_path])
 
-def _ffmpeg_speed_change(input_path, output_path, factor):
-    v_filter = f"setpts=PTS/{factor}"
-    a_filter = f"atempo={factor}"
-    _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-filter_complex", f"[0:v]{v_filter}[v];[0:a]{a_filter}[a]", 
-                 "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "fast", output_path])
-
-def _ffmpeg_reverse(input_path, output_path):
-    _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-vf", "reverse", "-af", "areverse", output_path])
-
-def _ffmpeg_blackwhite(input_path, output_path):
-    _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-vf", "format=gray", output_path])
-
 def _upscale_video_ffmpeg(input_path, output_path):
-    _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-vf", "scale=3840:2160:flags=lanczos,unsharp=5:5:1.0:5:5:0.0", 
+    _run_ffmpeg(["ffmpeg", "-y", "-i", input_path, "-vf", "scale=3840:2160:flags=lanczos", 
                  "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-c:a", "copy", output_path])
 
 # ------------------------------------------------------------------
@@ -137,7 +106,6 @@ def _edit_video_hybrid(input_path: str, output_path: str, instruction: str) -> s
     """المتحكم الذكي: يختار بين MoviePy و FFmpeg"""
     instruction = instruction.lower()
 
-    # --- استخراج الصوت ---
     if any(x in instruction for x in ["صوت", "اغنية", "mp3"]):
         final_output = input_path.rsplit(".", 1)[0] + ".mp3"
         if MOVIEPY_AVAILABLE:
@@ -146,52 +114,16 @@ def _edit_video_hybrid(input_path: str, output_path: str, instruction: str) -> s
                     clip.audio.write_audiofile(final_output)
                 return final_output
             except Exception:
-                pass # Fallback to FFmpeg if MoviePy fails
+                pass 
         _ffmpeg_extract_audio(input_path, final_output)
         return final_output
 
-    # --- GIF ---
     if any(x in instruction for x in ["gif", "متحركة"]):
         final_output = input_path.rsplit(".", 1)[0] + ".gif"
-        if MOVIEPY_AVAILABLE:
-            try:
-                with VideoFileClip(input_path) as clip:
-                    sub = clip.subclip(0, min(7, clip.duration))
-                    sub.write_gif(final_output, fps=12)
-                return final_output
-            except Exception:
-                pass
         _ffmpeg_create_gif(input_path, final_output)
         return final_output
 
-    # --- السرعة ---
-    if any(x in instruction for x in ["سريع", "تسريع"]):
-        if MOVIEPY_AVAILABLE:
-            try:
-                with VideoFileClip(input_path) as clip:
-                    # في النسخة الجديدة fx تُستدعى كدالة
-                    final = clip.fx(vfx.speedx, 1.5)
-                    final.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="fast")
-                return output_path
-            except Exception:
-                pass
-        _ffmpeg_speed_change(input_path, output_path, 1.5)
-        return output_path
-
-    # --- العكس ---
-    if any(x in instruction for x in ["عكس", "قلب"]):
-        if MOVIEPY_AVAILABLE:
-            try:
-                with VideoFileClip(input_path) as clip:
-                    final = clip.fx(vfx.time_mirror)
-                    final.write_videofile(output_path, codec="libx264", audio_codec="aac")
-                return output_path
-            except Exception:
-                pass
-        _ffmpeg_reverse(input_path, output_path)
-        return output_path
-
-    # --- افتراضي (مجرد تحويل) ---
+    # افتراضي: تحويل عادي
     _upscale_video_ffmpeg(input_path, output_path)
     return output_path
 
@@ -207,7 +139,6 @@ async def process_media(file_path: str, instruction: str) -> str:
     
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     ext = os.path.splitext(file_path)[1].lower()
-    
     is_video = ext in [".mp4", ".mkv", ".webm", ".avi", ".mov"]
     is_image = ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
     
@@ -216,10 +147,10 @@ async def process_media(file_path: str, instruction: str) -> str:
         output_path = f"{TEMP_DIR}/{base_name}_no_bg.png"
 
     try:
-        logger.info(f"Processing media: {instruction} on {file_path}")
+        logger.info(f"Processing media: {instruction}")
 
         if is_image:
-            if any(x in instruction for x in ["عزل", "خلفية", "png"]):
+            if any(x in instruction for x in ["عزل", "خلفية"]):
                 await loop.run_in_executor(None, _remove_bg_image, file_path, output_path)
             elif any(x in instruction for x in ["انمي", "كرتون"]):
                 await loop.run_in_executor(None, _apply_anime_filter, file_path, output_path)
