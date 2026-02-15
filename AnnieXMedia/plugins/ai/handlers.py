@@ -1,4 +1,4 @@
-# plugins/ai/handlers.py
+# plugins/ai/handlers.p
 # Authored By Certified Coders (c) 2026
 # AI Handler System - Pure Text Edition
 # Features: Streaming, Session Management, Admin Control.
