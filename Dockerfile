@@ -1,7 +1,7 @@
 # ==================================================
-# 🏗️ المرحلة 1: NVIDIA CUDA 12.6 - Ubuntu 24.04
+# 🏗️ النسخة الموحدة (AI & Music Only) - Python 3.13 Slim
 # ==================================================
-FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
+FROM python:3.13-slim
 
 # ==================================================
 # ⚡ إعدادات البيئة
@@ -9,93 +9,90 @@ FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
-    OLLAMA_MODELS="/app/ollama_models" \
+    # مسارات Deno
+    DENO_INSTALL="/root/.deno" \
+    PATH="/root/.deno/bin:/usr/local/bin:$PATH" \
+    # إعدادات Ollama
     OLLAMA_HOST="0.0.0.0"
 
 WORKDIR /app
 
 # ==================================================
-# 🛠️ تسطيب الأدوات (Node.js + Python 3.13)
+# 🛠️ تثبيت النظام + Node.js + Deno + Ollama
 # ==================================================
-RUN apt-get update && apt-get upgrade -y && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    software-properties-common wget curl git \
-    aria2 zstd xz-utils unzip zip \
-    libgl1 libglib2.0-0 libsm6 libxext6 \
-    imagemagick ghostscript libsndfile1 fontconfig \
-    build-essential libffi-dev cmake \
-    pciutils lshw nodejs npm && \
-    add-apt-repository ppa:deadsnakes/ppa -y && \
+    curl git wget gnupg ffmpeg aria2 procps zstd unzip \
+    build-essential libffi-dev libxml2-dev libxslt-dev zlib1g-dev && \
+    \
+    # 1. إعداد وتثبيت Node.js (النسخة 20 - مهم لفك تشفير يوتيوب)
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
-    python3.13 python3.13-dev python3.13-venv \
-    && \
-    ln -sf /usr/bin/python3.13 /usr/bin/python3 && \
-    ln -sf /usr/bin/python3.13 /usr/bin/python && \
-    sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml || true && \
+    apt-get install -y nodejs && \
+    \
+    # 2. تثبيت Deno
+    curl -fsSL https://deno.land/install.sh | sh && \
+    \
+    # 3. تثبيت Ollama
+    curl -fsSL https://ollama.com/install.sh | sh && \
+    \
+    # تنظيف الكاش
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ==================================================
-# 🔧 إصلاح PIP
+# 🐍 إعداد البايثون والمكتبات
 # ==================================================
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.13 get-pip.py --break-system-packages && \
-    rm get-pip.py
+RUN pip install --upgrade pip setuptools wheel
 
-# ==================================================
-# 🎥 تنزيل FFmpeg
-# ==================================================
-RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz && \
-    tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz && \
-    cp ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/bin/ffmpeg && \
-    cp ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/bin/ffprobe && \
-    chmod +x /usr/bin/ffmpeg /usr/bin/ffprobe && \
-    rm -rf ffmpeg-master-latest-linux64-gpl*
-
-# ==================================================
-# 🧠 تجهيز Ollama
-# ==================================================
-RUN curl -fsSL https://ollama.com/install.sh | sh
-
-# ==================================================
-# 🐍 تسطيب المكتبات
-# ==================================================
+# نسخ ملف المتطلبات
 COPY requirements.txt .
 
-# 1. تنظيف وتسطيب المتطلبات
+# تثبيت المتطلبات (مع استثناء pytgcalls لتثبيته يدوياً)
 RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt && \
-    pip install --no-cache-dir --break-system-packages --ignore-installed -r filtered.txt
+    pip install --no-cache-dir -r filtered.txt
 
-# 2. تسطيب المكتبات الثقيلة + py-yt-search (المكتبة الجديدة)
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
-    "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy \
-    py-yt-search \
-    https://github.com/yt-dlp/yt-dlp/archive/master.zip
+# تثبيت مكتبات الذكاء وتخطي الحظر (بدون مكتبات الصور والفيديو)
+RUN pip install --no-cache-dir \
+    uvloop \
+    g4f \
+    curl_cffi \
+    ollama \
+    py-yt-search
 
 # ==================================================
-# 📂 التجهيز النهائي
+# 📂 نسخ الملفات وإعدادات yt-dlp
 # ==================================================
+# نسخ مجلد pytgcalls المحلي
+COPY pytgcalls /app/pytgcalls
+
+# إعداد yt-dlp
+RUN mkdir -p /etc/yt-dlp && \
+    echo "--remote-components ejs:github" > /etc/yt-dlp.conf
+
+# نسخ باقي مشروع البوت
 COPY . .
 
-RUN mkdir -p /app/downloads /app/cache /app/ollama_models && \
-    chmod -R 777 /app
-
 # ==================================================
-# 🚀 التشغيل
+# 🧠 سكريبت الإقلاع (AI + Music Logic)
 # ==================================================
 RUN echo '#!/bin/bash\n\
 \n\
-echo "🟢 [System] Starting..."\n\
-ollama serve > /app/ollama.log 2>&1 &\n\
+echo "🔴 [AI Engine] Starting Ollama Server..."\n\
+ollama serve > /var/log/ollama.log 2>&1 &\n\
 sleep 5\n\
-python3 run.py &\n\
-BOT_PID=$!\n\
-echo "✅ [Bot] Started (PID: $BOT_PID)"\n\
-(sleep 15 && ollama pull deepseek-r1:70b > /dev/null 2>&1) &\n\
-wait $BOT_PID\n\
+\n\
+echo "🔵 [AI Engine] Downloading THE KING (DeepSeek-R1 70B)..."\n\
+# التحميل هنا (Blocking) لضمان جاهزية الذكاء قبل بدء البوت\n\
+ollama pull deepseek-r1:70b\n\
+echo "✅✅ [AI Engine] DeepSeek-R1 is Ready & Loaded!"\n\
+\n\
+echo "🟢 [Music Bot] Starting AnnieXBoda..."\n\
+python3 run.py\n\
 ' > start.sh && chmod +x start.sh
 
+# ==================================================
+# 🏁 التشغيل
+# ==================================================
 CMD ["./start.sh"]
