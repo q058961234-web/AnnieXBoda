@@ -1,92 +1,68 @@
-# ===== Core Async & Performance (أقصى سرعة) ====
-uvloop==0.22.1
+# ===== Core Async & Speed =====
+uvloop
 aiofiles
 aiohttp[speedups]
-httpx[http2,brotli]>=0.28.1
-psutil
-cachetools
-brotli
-certifi
+httpx[http2,brotli]
 orjson
+ujson
 
-# ===== Crypto / Security =====
-argon2-cffi
-pycryptodome
-pytgcrypto
-
-# ===== Scheduling =====
-apscheduler
-
-# ===== Media / Audio / Video =====
-yt-dlp>=2025.1.0
-ffmpeg-python
-pydub
-mutagen
-hachoir
-opencv-python-headless
+# ===== System & Media Processing =====
+# تعمدنا عدم تحديد إصدار هنا ليقوم MoviePy باختيار المناسب
+pillow
 numpy
-pillow<12.0.0
-wget
-# ⚠️ التحديث الجديد للمونتاج (v2.0+)
-moviepy>=2.1.1
+opencv-python-headless
+imageio[ffmpeg]
+moviepy>=2.0.0
+yt-dlp
 
-# ===== Arabic Text Support =====
-arabic-reshaper
-python-bidi
+# ===== AI & Enhancement =====
+rembg[gpu]
+realesrgan-ncnn-py
+gfpgan
+basicsr
+diffusers
+transformers
+accelerate
+safetensors
+torch --index-url https://download.pytorch.org/whl/cu121
 
-# ===== Telegram / Calls =====
-ntgcalls>=2.1.0
-kurigram>=2.2.17
+# ===== Telegram Core =====
+# النسخ الحديثة والمتوافقة مع 3.13
+ntgcalls
+kurigram
 pyromod
+pyrogram
+tgcrypto
 
-# ===== Web / API / Servers =====
+# ===== Web Server =====
 fastapi
-flask
 uvicorn[standard]
 python-multipart
 python-dotenv
 requests
 
-# ===== Databases =====
+# ===== Database =====
 motor
 pymongo
 
-# ===== Search / AI / TTS =====
-edge-tts
-gtts
-googletrans
-gpytranslate
-SpeechRecognition
-lyricsgenius
-spotipy
-deepai
-lexica-api
-nekosbest
-g4f
-
-# ===== Scraping / Parsing =====
+# ===== Utilities =====
+apscheduler
+cachetools
+psutil
 beautifulsoup4
 bs4
-python-whois
 pyyaml
-unidecode
-rapidfuzz
-fuzzywuzzy
-python-Levenshtein
-
-# ===== Utilities =====
-pyfiglet
-pyshorteners
-qrcode
-telegraph
-speedtest-cli
-future
 gitpython
 heroku3
-bing_image_downloader
-curl_cffi>=0.14.0
-pytz
+speedtest-cli
+qrcode
+pyshorteners
+googletrans
+gpytranslate
+speechrecognition
+edge-tts
+gtts
+curl_cffi
 
-# ===== YouTube Search =====
+# ===== Patches =====
 git+https://github.com/q058961234-web/youtube-search-python.git
-#Boda
