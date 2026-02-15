@@ -29,16 +29,14 @@ RUN apt-get update && apt-get upgrade -y && \
     libgl1 libglib2.0-0 libsm6 libxext6 \
     imagemagick ghostscript libsndfile1 fontconfig \
     build-essential libffi-dev cmake \
-    # أدوات الهاردوير عشان Ollama يشوف الـ GPU
     pciutils lshw \
-    # Node.js عشان اليوتيوب
     nodejs npm && \
     # إضافة بايثون 3.13
     add-apt-repository ppa:deadsnakes/ppa -y && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.13 python3.13-dev python3.13-venv \
-    # ❌ شيلنا python3-pip عشان هنسطبه يدوياً ونحل المشكلة
+    # ❌ لا نثبت python3-pip من apt لتجنب المشاكل
     && \
     # ربط الروابط الرمزية
     ln -sf /usr/bin/python3.13 /usr/bin/python3 && \
@@ -48,10 +46,14 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ==================================================
-# 🔧 إصلاح PIP (الحل الجذري لمشكلة RECORD file)
+# 🔧 إصلاح PIP (التصحيح هنا)
 # ==================================================
-# بننزل سكربت التسطيب الرسمي ونشغله بذكاء
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 --break-system-packages
+# 1. تنزيل السكربت كملف
+# 2. تشغيله مع الفلاج الصحيح
+# 3. حذفه لتنظيف المساحة
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3.13 get-pip.py --break-system-packages && \
+    rm get-pip.py
 
 # ==================================================
 # 🎥 تنزيل FFmpeg (H200 NVENC)
@@ -73,7 +75,7 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 # ==================================================
 COPY requirements.txt .
 
-# تنظيف المتطلبات وتسطيبها (مع استخدام --break-system-packages عشان Ubuntu 24.04)
+# تنظيف المتطلبات وتسطيبها (مع --break-system-packages)
 RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt && \
     pip install --no-cache-dir --break-system-packages -r filtered.txt
 
