@@ -1,6 +1,6 @@
 # Authored By Certified Coders © 2026
-# System: Call Controller (PyTgCalls v3.0 Custom Kernel)
-# H200 Optimized Edition - 60FPS Video - Stereo Audio
+# System: Call Controller (PyTgCalls v3.0 Native)
+# Fixes: Queue (StreamEnded Filter), Seek (FFmpeg Offset), Auto-Start
 
 import asyncio
 from datetime import datetime, timedelta
@@ -54,7 +54,7 @@ autoend = {}
 counter = {}
 
 # ===============================
-# Helper Functions (H200 Custom Kernel)
+# Helper Functions
 # ===============================
 
 async def get_direct_link(videoid: str, video: bool = False):
@@ -66,8 +66,7 @@ async def get_direct_link(videoid: str, video: bool = False):
         "quiet": True,
         "no_warnings": True,
         "geo_bypass": True,
-        "nocheckcertificate": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}}
+        "nocheckcertificate": True
     }
     try:
         loop = asyncio.get_running_loop()
@@ -80,49 +79,38 @@ async def get_direct_link(videoid: str, video: bool = False):
 
 def _build_stream(path: str, video: bool = False, ffmpeg_opts: str = "") -> MediaStream:
     """
-    Constructs a MediaStream object compatible with YOUR Custom PyTgCalls v3.0.
-    OPTIMIZED FOR: 60FPS Video + Stereo Audio (H200 Core).
+    Constructs a MediaStream object compatible with PyTgCalls v3.0.
+    Handles Audio/Video flags and FFmpeg parameters.
     """
     path = str(path)
     is_url = path.startswith("http")
     
-    # 1. Audio Params (Matching your Custom AudioParameters)
-    # -ac 2: Forces Stereo (Since you unlocked channels=2)
-    # -ar 48000: Studio Quality
-    # -b:a 192k: High Bitrate
-    audio_flags = "-ac 2 -ar 48000 -b:a 192k -af \"volume=1.5\" " 
-
-    # 2. Video Params (Matching your Custom VideoQuality)
-    # -r 60: Forces 60 FPS (Since you unlocked frame_rate=60)
-    # -preset ultrafast: Critical for 60FPS realtime encoding on H200
-    video_flags = "-r 60 -preset ultrafast -tune zerolatency " if video else ""
-
-    # 3. Base Optimization Flags
+    # 1. Base FFmpeg parameters
+    # -threads 2: Optimization
+    # -probesize/-analyzeduration: Low latency
     base_flags = (
-        "-threads 16 " # Unleash 16 Cores for 60FPS
-        "-probesize 64M -analyzeduration 0 " # Bigger buffer for 60FPS stream
-        "-fflags +genpts+igndts+nobuffer+fastseek -sync ext "
+        "-threads 2 "
+        "-probesize 10M -analyzeduration 10M "
+        "-fflags +genpts+igndts+nobuffer -sync ext "
     )
     
-    # 4. Network Shield
+    # 2. Input specific flags
     if is_url:
-        base_flags += (
-            "-reconnect 1 -reconnect_streamed 1 "
-            "-reconnect_on_network_error 1 -reconnect_delay_max 5 "
-            "-rw_timeout 20000000 " # Increased timeout for high bitrate
-        )
+        # Network reconnection logic
+        base_flags += "-reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 5 "
     else:
+        # Local files must be read at native speed (-re)
         base_flags += "-re "
 
-    # Combine all flags
-    final_ffmpeg = base_flags + audio_flags + video_flags + ffmpeg_opts
+    # 3. Add Custom Opts (like Seek -ss)
+    final_ffmpeg = base_flags + ffmpeg_opts
 
+    # 4. Return the Universal MediaStream Object
     return MediaStream(
         media_path=path,
-        # ✅ Using your Custom Unlocked Classes
-        audio_parameters=AudioQuality.STUDIO, # Should map to your modified 48k/2ch
-        video_parameters=VideoQuality.HD_720p, # Should map to your modified 720p/60fps
-        
+        audio_parameters=AudioQuality.HIGH, # 48kHz Stereo
+        video_parameters=VideoQuality.HD_720p, # 720p
+        # Strict Flags based on requested mode
         video_flags=MediaStream.Flags.REQUIRED if video else MediaStream.Flags.IGNORE,
         audio_flags=MediaStream.Flags.REQUIRED,
         ffmpeg_parameters=final_ffmpeg,
@@ -137,7 +125,7 @@ async def _clear_(chat_id: int) -> None:
     await set_loop(chat_id, 0)
 
 # ===============================
-# The Controller Class (Unchanged Logic)
+# The Controller Class
 # ===============================
 
 class Call:
@@ -201,13 +189,17 @@ class Call:
     async def seek_stream(self, chat_id: int, file_path: str, to_seek: int, duration: int, mode: str) -> None:
         """
         Implements seeking via FFmpeg offset parameter.
+        Used by seek.py
         """
         assistant = await group_assistant(self, chat_id)
+        
+        # FFmpeg syntax: -ss <seconds>
         ffmpeg_opts = f"-ss {to_seek} "
         is_video = (mode == "video")
         
         stream = _build_stream(file_path, video=is_video, ffmpeg_opts=ffmpeg_opts)
         
+        # 'play' handles stream switching seamlessly
         await assistant.play(
             chat_id,
             stream,
@@ -215,6 +207,10 @@ class Call:
         )
 
     async def skip_stream(self, chat_id: int, link: str, video: bool = False) -> None:
+        """
+        Implements skipping/forcing a specific stream.
+        Used by skip.py
+        """
         assistant = await group_assistant(self, chat_id)
         stream = _build_stream(link, video=video)
         
@@ -230,25 +226,31 @@ class Call:
         lang = await get_lang(chat_id)
         _ = get_string(lang)
 
+        # Resolve YouTube Direct Links if needed
         final_link = link
         if "youtube" in str(link) or "youtu.be" in str(link):
+            # Assumes link is valid or handled by stream.py beforehand
             pass
 
+        # Build Stream
         stream = _build_stream(final_link, video=video)
 
         try:
+            # play() with auto_start=True replaces join_group_call + change_stream
             await assistant.play(
                 chat_id,
                 stream,
                 config=GroupCallConfig(auto_start=True)
             )
             
+            # Update Internal State
             self.active_calls.add(chat_id)
             await add_active_chat(chat_id)
             await music_on(chat_id)
             if video:
                 await add_active_video_chat(chat_id)
             
+            # Auto-End Logic
             if await is_autoend():
                 counter[chat_id] = {}
                 try:
@@ -267,7 +269,7 @@ class Call:
             raise AssistantErr(f"Error: {e}")
 
     async def start(self) -> None:
-        LOGGER(__name__).info("Starting PyTgCalls Clients (v3.0 H200 Edition)...")
+        LOGGER(__name__).info("Starting PyTgCalls Clients (v3.0)...")
         if self.one and config.STRING1: await self.one.start()
         if self.two and config.STRING2: await self.two.start()
         if self.three and config.STRING3: await self.three.start()
@@ -280,17 +282,20 @@ class Call:
         
         for assistant in assistants:
             
+            # 1. Stream Ended -> Play Next (Queue)
             @assistant.on_update(filters.stream_end())
             async def stream_end_handler(client, update: Update):
                 chat_id = update.chat_id
                 LOGGER(__name__).info(f"Stream ended for chat {chat_id}")
                 await self.play(client, chat_id)
 
+            # 2. Left Call -> Stop & Clean
             @assistant.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
             async def left_call_handler(client, update: Update):
                 chat_id = update.chat_id
                 await self.stop_stream(chat_id)
             
+            # 3. Kicked -> Stop & Clean
             @assistant.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
             async def kicked_handler(client, update: Update):
                 chat_id = update.chat_id
@@ -299,6 +304,9 @@ class Call:
     # --- Queue Processing ---
     @capture_internal_err
     async def play(self, client, chat_id: int) -> None:
+        """
+        Handles the queue when a song ends.
+        """
         check = db.get(chat_id)
         if not check:
             await _clear_(chat_id)
@@ -325,6 +333,7 @@ class Call:
             try: await _clear_(chat_id); return await client.leave_call(chat_id)
             except: return
 
+        # Get Next Track Info
         queued = check[0].get("file")
         title = (check[0].get("title") or "").title()
         user = check[0].get("by")
@@ -335,6 +344,7 @@ class Call:
         
         is_video = str(streamtype) == "video"
         
+        # Link Handling
         final_link = queued
         if "youtube" in str(queued):
              try:
@@ -342,6 +352,7 @@ class Call:
                 if direct: final_link = direct
              except: pass
 
+        # Build & Play Next Stream
         stream = _build_stream(final_link, video=is_video)
 
         try:
@@ -356,6 +367,7 @@ class Call:
             else:
                 await remove_active_video_chat(chat_id)
 
+            # Notifications
             img = await get_thumb(videoid)
             from AnnieXMedia.utils.inline import stream_markup
             button = stream_markup(get_string(await get_lang(chat_id)), chat_id)
