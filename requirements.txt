@@ -1,4 +1,4 @@
-# ===== Core Async & Speed =====
+# ===== Core Async & Performance (أقصى سرعة) ====
 uvloop
 aiofiles
 aiohttp[speedups]
@@ -6,69 +6,92 @@ httpx[http2,brotli]
 orjson
 ujson
 
-# ===== System & Media Processing =====
-# تعمدنا عدم تحديد إصدار هنا ليقوم MoviePy باختيار المناسب
-pillow
-numpy
+# ===== Crypto / Security =====
+argon2-cffi
+pycryptodome
+pytgcrypto
+
+# ===== Scheduling =====
+apscheduler
+
+# ===== Media / Audio / Video =====
+yt-dlp>=2026.2.4
+ffmpeg-python
+pydub
+mutagen
+hachoir
+# نسخة السيرفرات الخفيفة
 opencv-python-headless
-imageio[ffmpeg]
-moviepy>=2.0.0
-yt-dlp
+numpy
+# بيلو 12 كما طلبت
+pillow>=12.0.0
+wget
+# MoviePy من المصدر لدعم بيلو 12
+git+https://github.com/Zulko/moviepy.git
 
-# ===== AI & Enhancement =====
-rembg[gpu]
-realesrgan-ncnn-py
-gfpgan
-basicsr
-diffusers
-transformers
-accelerate
-safetensors
-torch --index-url https://download.pytorch.org/whl/cu121
+# ===== Arabic Text Support =====
+arabic-reshaper
+python-bidi
 
-# ===== Telegram Core =====
-# النسخ الحديثة والمتوافقة مع 3.13
-ntgcalls
+# ===== Telegram / Calls =====
+ntgcalls>=2.2.11
 kurigram
 pyromod
 pyrogram
 tgcrypto
 
-# ===== Web Server =====
+# ===== Web / API / Servers =====
 fastapi
+flask
 uvicorn[standard]
 python-multipart
 python-dotenv
 requests
 
-# ===== Database =====
+# ===== Databases =====
 motor
 pymongo
 
-# ===== Utilities =====
-apscheduler
-cachetools
-psutil
-beautifulsoup4
-bs4
-pyyaml
-gitpython
-heroku3
-speedtest-cli
-qrcode
-pyshorteners
-googletrans
-gpytranslate
-speechrecognition
+# ===== Search / AI / TTS =====
 edge-tts
 gtts
-curl_cffi
+googletrans
+gpytranslate
+SpeechRecognition
+lyricsgenius
+spotipy
+deepai
+lexica-api
+nekosbest
+g4f
 
-# ===== Patches =====
-git+https://github.com/q058961234-web/youtube-search-python.git
+# ===== Scraping / Parsing =====
+beautifulsoup4
+bs4
+python-whois
+pyyaml
+unidecode
+rapidfuzz
+fuzzywuzzy
+python-Levenshtein
 
-# ===== 🛠️ Missing Media Libs (Added as requested, NO VERSIONS) =====
+# ===== Utilities =====
+pyfiglet
+pyshorteners
+qrcode
+telegraph
+speedtest-cli
+future
+gitpython
+heroku3
 bing_image_downloader
-imageio
-scipy
+curl_cffi
+pytz
+
+# ===== Images (AI Background Removal) =====
+# ريموف بي جي بتدعم 3.13 وشغالة تمام
+rembg[gpu]
 scikit-image
+
+# ===== YouTube Search =====
+git+https://github.com/q058961234-web/youtube-search-python.git
