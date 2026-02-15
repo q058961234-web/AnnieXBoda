@@ -4,7 +4,7 @@
 FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
 
 # ==================================================
-# ⚡ إعدادات البيئة
+# ⚡ إعدادات البيئة (تم إزالة PYTHON_GIL لمنع الكراش)
 # ==================================================
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -13,13 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility,video \
     OLLAMA_MODELS="/app/ollama_models" \
-    OLLAMA_HOST="0.0.0.0" \
-    PYTHON_GIL=0
+    OLLAMA_HOST="0.0.0.0"
+    # ❌ تم حذف PYTHON_GIL=0 لأنه سبب المشكلة
 
 WORKDIR /app
 
 # ==================================================
-# 🛠️ تسطيب الأدوات + Node.js (حل مشكلة يوتيوب)
+# 🛠️ تسطيب الأدوات + Node.js + pciutils
 # ==================================================
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -28,15 +28,19 @@ RUN apt-get update && apt-get upgrade -y && \
     libgl1 libglib2.0-0 libsm6 libxext6 \
     imagemagick ghostscript libsndfile1 fontconfig \
     build-essential libffi-dev cmake \
-    # 🔥 إضافة Node.js (ضروري جداً لـ yt-dlp)
+    # 🔥 أدوات الهاردوير لـ Ollama
+    pciutils lshw \
+    # 🔥 Node.js عشان اليوتيوب
     nodejs npm && \
     # إضافة بايثون 3.13
     add-apt-repository ppa:deadsnakes/ppa -y && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.13 python3.13-dev python3.13-venv python3-pip && \
+    # ربط الروابط الرمزية
     ln -sf /usr/bin/python3.13 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.13 /usr/bin/python && \
+    # إصلاح ImageMagick
     sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml || true && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -62,32 +66,44 @@ RUN python3 -m pip install --upgrade pip setuptools wheel
 
 COPY requirements.txt .
 
+# تنظيف المتطلبات وتسطيبها
 RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt && \
     pip install --no-cache-dir -r filtered.txt
 
-# 🔥 تحديث yt-dlp للنسخة Nightly إجبارياً (حل مشكلة التوقيع)
-RUN pip install --no-cache-dir --force-reinstall \
+# تسطيب المكتبات الثقيلة + تحديث yt-dlp
+RUN pip install --no-cache-dir \
     "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy \
     https://github.com/yt-dlp/yt-dlp/archive/master.zip
 
+# ==================================================
+# 📂 نقل الملفات وتجهيز المجلدات
+# ==================================================
 COPY . .
 
 RUN mkdir -p /app/downloads /app/cache /app/ollama_models && \
     chmod -R 777 /app
 
 # ==================================================
-# 🚀 سكريبت التشغيل
+# 🚀 سكريبت التشغيل (Auto-Pilot)
 # ==================================================
 RUN echo '#!/bin/bash\n\
 \n\
 echo "🟢 [Auto-Pilot] Starting System..."\n\
+\n\
+# 1. تشغيل Ollama\n\
 ollama serve > /app/ollama.log 2>&1 &\n\
 sleep 5\n\
-export PYTHON_GIL=0\n\
+\n\
+# 2. تشغيل البوت (بدون GIL Flag)\n\
 python3 run.py &\n\
 BOT_PID=$!\n\
+\n\
 echo "✅ [Bot] Started with PID $BOT_PID"\n\
-(sleep 10 && ollama pull deepseek-r1:70b > /dev/null 2>&1) &\n\
+\n\
+# 3. تحميل موديل الذكاء الاصطناعي\n\
+echo "🧠 [AI] Downloading DeepSeek Model in background..."\n\
+(sleep 15 && ollama pull deepseek-r1:70b > /dev/null 2>&1) &\n\
+\n\
 wait $BOT_PID\n\
 ' > start.sh && chmod +x start.sh
 
