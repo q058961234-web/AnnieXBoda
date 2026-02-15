@@ -1,6 +1,6 @@
 # plugins/ai/handlers.py
 # Authored By Certified Coders (c) 2026
-# AI Handler System - Stable Edition (Pyrogram v2+ Supported)
+# AI Handler System - Stable Text Edition (No Emojis)
 # Fixes: Enum Migration, FloodWait Protection, Session Safety.
 
 import os
@@ -12,7 +12,7 @@ from typing import Dict, Optional, Union, Set
 
 # Pyrogram
 from pyrogram import filters, Client
-# ✅ تصحيح: استيراد الثوابت من enums
+# استيراد الثوابت من enums
 from pyrogram.enums import ChatAction, ParseMode
 from pyrogram.types import (
     Message,
@@ -102,7 +102,7 @@ class SessionManager:
                 if user_id in self._sessions and self._sessions[user_id]["chat_id"] == chat_id:
                     del self._sessions[user_id]
                     try:
-                        await client.send_message(chat_id, "⚠️ تم انهاء وضع الذكاء الدائم لعدم وجود رد.")
+                        await client.send_message(chat_id, "تم انهاء وضع الذكاء الدائم لعدم وجود رد.")
                     except Exception:
                         pass
 
@@ -143,7 +143,7 @@ async def enable_permanent_ai(client: Client, message: Message):
     
     await SESSIONS.start_session(client, user_id, chat_id)
     await message.reply_text(
-        "🧠 **تم تفعيل وضع الذكاء الدائم.**\n"
+        "**تم تفعيل وضع الذكاء الدائم.**\n"
         "سيتم الرد عليك في هذا الجروب فقط.\n"
         "سيتم الاغلاق تلقائيا بعد دقيقة من الصمت."
     )
@@ -154,7 +154,7 @@ async def disable_permanent_ai(client: Client, message: Message):
     
     if user_id in SESSIONS._sessions:
         await SESSIONS.end_session(user_id)
-        await message.reply_text("🛑 تم ايقاف الذكاء الدائم.")
+        await message.reply_text("تم ايقاف الذكاء الدائم.")
     else:
         await message.reply_text("الوضع غير مفعل اصلا.")
 
@@ -164,7 +164,7 @@ async def disable_permanent_ai(client: Client, message: Message):
 @app.on_message(filters.regex(r"^(مسح ذاكرتي)$") & ~filters.bot)
 async def clear_memory_handler(client: Client, message: Message):
     clear_user_memory(message.from_user.id)
-    await message.reply_text("🗑️ تم مسح سجل المحادثة الخاص بك.")
+    await message.reply_text("تم مسح سجل المحادثة الخاص بك.")
 
 # ------------------------------------------------------------------
 # ADMIN CONTROL PANEL
@@ -172,21 +172,21 @@ async def clear_memory_handler(client: Client, message: Message):
 @app.on_message(filters.regex(r"^(اوامر الذكاء|كيب ذكاء)$") & SUDO_FILTER)
 async def admin_panel(client: Client, message: Message):
     status = get_engine_status()
-    state_text = "مفعل ✅" if status["enabled"] else "معطل ❌"
+    state_text = "مفعل" if status["enabled"] else "معطل"
     
     text = (
-        "**🤖 لوحة تحكم الذكاء الاصطناعي**\n\n"
+        "**لوحة تحكم الذكاء الاصطناعي**\n\n"
         f"• الحالة: {state_text}\n"
         f"• المحرك: `{status['model']}`\n"
         f"• المستخدمين النشطين: `{status['active_users']}`"
     )
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📚 اوامر المستخدمين", callback_data="ai_help")],
-        [InlineKeyboardButton("⏯️ تشغيل / ايقاف", callback_data="ai_toggle")],
-        [InlineKeyboardButton("🧹 تنظيف الذاكرة", callback_data="ai_flush")],
-        [InlineKeyboardButton("🔄 اعادة تشغيل", callback_data="ai_reboot")],
-        [InlineKeyboardButton("❌ اغلاق", callback_data="ai_close")]
+        [InlineKeyboardButton("اوامر المستخدمين", callback_data="ai_help")],
+        [InlineKeyboardButton("تشغيل / ايقاف", callback_data="ai_toggle")],
+        [InlineKeyboardButton("تنظيف الذاكرة", callback_data="ai_flush")],
+        [InlineKeyboardButton("اعادة تشغيل", callback_data="ai_reboot")],
+        [InlineKeyboardButton("اغلاق", callback_data="ai_close")]
     ])
     
     await message.reply_text(text, reply_markup=keyboard)
@@ -202,7 +202,7 @@ async def admin_callbacks(client: Client, query: CallbackQuery):
 
     if data == "ai_help":
         help_text = (
-            "🛠️ **اوامر المستخدم:**\n"
+            "**اوامر المستخدم:**\n"
             "- ذكاء <سؤال>\n"
             "- ذكاء دائم\n"
             "- كفاية (لانهاء الوضع الدائم)\n"
@@ -215,10 +215,10 @@ async def admin_callbacks(client: Client, query: CallbackQuery):
         new_state = not status["enabled"]
         set_engine_state(new_state)
         await query.answer("تم تغيير الحالة.", show_alert=True)
-        new_status_text = "مفعل ✅" if new_state else "معطل ❌"
+        new_status_text = "مفعل" if new_state else "معطل"
         try:
             await query.message.edit_text(
-                f"**🤖 لوحة تحكم الذكاء الاصطناعي**\n\n• الحالة: {new_status_text}\n• المحرك: `{status['model']}`",
+                f"**لوحة تحكم الذكاء الاصطناعي**\n\n• الحالة: {new_status_text}\n• المحرك: `{status['model']}`",
                 reply_markup=query.message.reply_markup
             )
         except:
@@ -277,17 +277,16 @@ async def main_ai_handler(client: Client, message: Message):
 
     # Send placeholder and Action
     try:
-        # ✅ FIX: Using ChatAction from Enums
+        # Using ChatAction from Enums
         await client.send_chat_action(chat_id, ChatAction.TYPING)
-        # ✅ تم التعديل: تغيير الرسالة إلى "جـاري التفكير."
-        wait_msg = await message.reply_text("جـاري التفكير.")
+        wait_msg = await message.reply_text("جاري التفكير.")
     except Exception as e:
         logger.warning(f"Could not send placeholder: {e}")
         return
 
-    # 🛡️ FloodWait Protection Variables
+    # FloodWait Protection Variables
     last_update_time = 0
-    update_interval = 1.5  # Seconds between edits (Telegram limit is roughly 1s)
+    update_interval = 1.5  # Seconds between edits
 
     # Callback to update message in real-time
     async def update_response_text(text: str):
@@ -326,6 +325,6 @@ async def main_ai_handler(client: Client, message: Message):
     except Exception as e:
         logger.error(f"Handler Error: {e}")
         try:
-            await wait_msg.edit_text("❌ حدث خطأ اثناء المعالجة.")
+            await wait_msg.edit_text("حدث خطأ اثناء المعالجة.")
         except:
             pass
