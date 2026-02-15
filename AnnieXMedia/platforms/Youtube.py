@@ -1,22 +1,20 @@
 # Authored By Certified Coders © 2026
-# H200 TURBO EDITION: yt-dlp -g + JS Engine + Anti-Blocking
-# Optimized for Speed & Stability against YouTube Restrictions
+# H200 ULTIMATE: Correct Cookie Handling + Browser Impersonation
+# Fixes: Cookie/Client Mismatch & Data Center IP Blocking
 
 import asyncio
 import os
 import re
 import logging
-import json
 from typing import Union, Optional, Tuple
 
 from yt_dlp import YoutubeDL
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
-from youtubesearchpython.aio import VideosSearch
+from youtubesearchpython.__future__ import VideosSearch
 
 import config
 
-# Logger
 log = logging.getLogger("AnnieXMedia.YouTube")
 
 def cookiefile():
@@ -42,12 +40,10 @@ class YouTubeAPI:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
         self.regex = r"(?:youtube\.com|youtu\.be)"
-        self.status = "https://www.youtube.com/oembed?url="
         self.listbase = "https://youtube.com/playlist?list="
 
     async def exists(self, link: str, videoid: Union[bool, str] = None):
-        if videoid:
-            link = self.base + link
+        if videoid: link = self.base + link
         return bool(re.search(self.regex, link))
 
     async def url(self, message_1: Message) -> Union[str, None]:
@@ -72,14 +68,13 @@ class YouTubeAPI:
         return None if offset in (None,) else text[offset : offset + length]
 
     # ==================================================================
-    # ⚡ FAST METADATA (ALEXA STYLE)
+    # ⚡ METADATA (YouTubSearchPython)
     # ==================================================================
     async def details(self, link: str, videoid: Union[bool, str] = None):
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
         
         try:
-            # استخدام youtubesearchpython لأنه أسرع بمراحل من yt-dlp في جلب البيانات
             results = VideosSearch(link, limit=1)
             res = await results.next()
             if not res["result"]: return "Unknown", "00:00", 0, "", ""
@@ -97,30 +92,42 @@ class YouTubeAPI:
             return "Unknown", "00:00", 0, "", ""
 
     # ==================================================================
-    # 🚀 TURBO DIRECT LINK (-g + JS ENGINE Bypass)
+    # 🚀 DIRECT LINK (-g) WITH COOKIE COMPATIBILITY
     # ==================================================================
     async def video(self, link: str, videoid: Union[bool, str] = None):
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
         
-        # 🔥 الأوامر السحرية للسرعة وتخطي الحظر
+        # الأساس: نستخدم الكوكيز
+        cookie_path = cookiefile()
+        
         cmd = [
             "yt-dlp",
-            "-g",                            # استخراج الرابط المباشر فقط
+            "-g",
             "--no-warnings",
             "--quiet",
-            "--force-ipv4",                  # يمنع مشاكل الاتصال في بعض السيرفرات
-            "--geo-bypass",
-            # 👇 الحل لمشكلة التشفير والسرعة (Android Client أسرع وأقل قيوداً)
-            "--extractor-args", "youtube:player_client=android,web;player_skip=configs",
-            # 👇 الصيغة المرنة: هات 720p لو متاح، لو لأ هات أي حاجة (Best) عشان ميفشلش
-            "-f", "best[height<=?720]/best",
-            f"{link}"
+            "--force-ipv4",
+            "--no-check-certificate",
+            # 👇 الحل لمشكلة التنسيق: أي جودة متاحة، لا تشترط MP4 الآن
+            "-f", "best/bestvideo+bestaudio",
         ]
 
-        if cookiefile():
-            cmd.insert(1, "--cookies")
-            cmd.insert(2, cookiefile())
+        if cookie_path:
+            # ✅ الحالة 1: يوجد كوكيز
+            # يجب استخدام Web Client ليطابق الكوكيز + Impersonate لخداع السيرفر
+            cmd.extend([
+                "--cookies", cookie_path,
+                # هذا يحاكي متصفح حقيقي بالكامل لتمرير الكوكيز بنجاح
+                "--impersonate", "chrome" 
+            ])
+        else:
+            # ❌ الحالة 2: لا يوجد كوكيز
+            # نلجأ للـ Android Client لتخطي الحظر
+            cmd.extend([
+                "--extractor-args", "youtube:player_client=android",
+            ])
+
+        cmd.append(f"{link}")
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -131,15 +138,35 @@ class YouTubeAPI:
         
         if stdout:
             return 1, stdout.decode().split("\n")[0]
+        
+        # ⚠️ Fallback: لو فشل بالكوكيز، جرب مرة تانية من غير كوكيز بوضع الأندرويد
+        # (أحياناً الكوكيز تكون محروقة وتسبب الفشل)
+        if cookie_path and stderr:
+            log.warning("Cookies failed, retrying with Android Client...")
+            fallback_cmd = [
+                "yt-dlp", "-g", "--no-warnings", "--quiet", "--force-ipv4",
+                "--extractor-args", "youtube:player_client=android",
+                "-f", "best/bestvideo+bestaudio",
+                f"{link}"
+            ]
+            proc_fb = await asyncio.create_subprocess_exec(
+                *fallback_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out_fb, err_fb = await proc_fb.communicate()
+            if out_fb:
+                return 1, out_fb.decode().split("\n")[0]
+            return 0, err_fb.decode()
+
         return 0, stderr.decode()
 
-    # توافقية مع الكود القديم
     async def get_direct_link(self, link: str, prefer_audio: bool = True) -> Optional[str]:
         status, url = await self.video(link)
         return url if status == 1 else None
 
     # ==================================================================
-    # 📥 DOWNLOADER (H200 POWERED via ARIA2)
+    # 📥 DOWNLOADER (Aria2 + Smart Format)
     # ==================================================================
     async def download(
         self,
@@ -155,18 +182,28 @@ class YouTubeAPI:
         
         if videoid: link = self.base + link
         loop = asyncio.get_running_loop()
+        
+        cookie_path = cookiefile()
 
-        # إعدادات Aria2 للسرعة الجنونية (16 اتصال متوازي)
-        # + تفعيل Web/Android Client لتخطي مشكلة التوقيع
+        # إعدادات Aria2
         base_opts = {
-            "cookiefile": cookiefile(),
             "quiet": True,
             "no_warnings": True,
             "external_downloader": "aria2c",
             "external_downloader_args": ["-x", "16", "-k", "1M", "-s", "16"],
-            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-            "check_formats": False, # سرعة إضافية (تجاهل الفحص الدقيق)
+            "nocheckcertificate": True,
+            "check_formats": False, # سرعة
         }
+
+        # ضبط العميل بناءً على وجود الكوكيز
+        if cookie_path:
+            base_opts["cookiefile"] = cookie_path
+            # مهم جداً: لا نضع extractor_args هنا لأن الكوكيز تحتاج Web Client افتراضي
+            # لكن يمكن تفعيل impersonate إذا كانت نسخة yt-dlp تدعمها عبر الـ API (غالبا تتطلب CLI)
+            # لذا نعتمد على الكوكيز فقط هنا
+        else:
+            # بدون كوكيز -> أندرويد
+            base_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
 
         def audio_dl():
             opts = base_opts.copy()
@@ -188,7 +225,7 @@ class YouTubeAPI:
 
         def video_dl():
             opts = base_opts.copy()
-            # دمج أفضل فيديو مع أفضل صوت لإنتاج MP4
+            # 🔥 دمج التنسيقات (الحل لمشكلة requested format)
             opts.update({
                 "format": "bestvideo+bestaudio/best",
                 "outtmpl": "downloads/%(id)s.%(ext)s",
@@ -224,7 +261,6 @@ class YouTubeAPI:
                 dl = await loop.run_in_executor(None, video_dl)
                 return dl, False
             else:
-                # Audio Stream -> يحمل الملف لضمان الثبات
                 dl = await loop.run_in_executor(None, audio_dl)
                 return dl, True
                 
@@ -233,20 +269,23 @@ class YouTubeAPI:
             return None, False
 
     # ==================================================================
-    # 🛠️ HELPER METHODS (Prevent Crashes)
+    # 🛠️ HELPER METHODS
     # ==================================================================
     async def playlist(self, link, limit, user_id, videoid: Union[bool, str] = None):
         if videoid: link = self.listbase + link
         if "&" in link: link = link.split("&")[0]
-        # استخدام subprocess لاستخراج القائمة بسرعة البرق
-        cmd = f"yt-dlp -i --flat-playlist --print id --playlist-end {limit} --skip-download '{link}'"
-        proc = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        # استخدام subprocess لاستخراج القائمة
+        cmd = ["yt-dlp", "-i", "--flat-playlist", "--print", "id", "--playlist-end", str(limit), "--skip-download", link]
+        if cookiefile():
+            cmd.insert(1, "--cookies")
+            cmd.insert(2, cookiefile())
+            
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, _ = await proc.communicate()
         return [x for x in out.decode().split("\n") if x]
 
     async def track(self, link: str, videoid: Union[bool, str] = None):
         if videoid: link = self.base + link
-        # استرجاع سريع للبيانات لزوم التشغيل المباشر
         try:
             results = VideosSearch(link, limit=1)
             res = await results.next()
