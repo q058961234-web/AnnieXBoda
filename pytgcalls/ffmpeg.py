@@ -21,8 +21,6 @@ from .exceptions import NoVideoSourceFound
 from .types.raw import AudioParameters
 from .types.raw import VideoParameters
 
-# 🔥 H200 LOGGING
-log = logging.getLogger(__name__)
 
 async def check_stream(
     ffmpeg_parameters: Optional[str],
@@ -32,19 +30,18 @@ async def check_stream(
     headers: Optional[Dict[str, str]] = None,
 ):
     try:
-        # 🔥 BYPASS: We skip cleanup_commands to allow NVENC flags
-        cmd = build_command(
-            'ffprobe',
-            ffmpeg_parameters,
-            path,
-            stream_parameters,
-            before_commands,
-            headers,
-            False,
-        )
-        
         ffprobe = await asyncio.create_subprocess_exec(
-            *cmd,
+            *await cleanup_commands(
+                build_command(
+                    'ffprobe',
+                    ffmpeg_parameters,
+                    path,
+                    stream_parameters,
+                    before_commands,
+                    headers,
+                    False,
+                ),
+            ),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -62,10 +59,7 @@ async def check_stream(
         if 'No such file' in stderr.decode('utf-8'):
             raise FileNotFoundError()
     except (subprocess.TimeoutExpired, JSONDecodeError):
-        try:
-            ffprobe.kill()
-        except:
-            pass
+        ffprobe.kill()
         raise
 
     have_video = False
@@ -78,7 +72,7 @@ async def check_stream(
     for stream in stream_list:
         codec_type = stream.get('codec_type', '')
         codec_name = stream.get('codec_name', '')
-        image_codecs = ['png', 'jpeg', 'jpg', 'mjpeg', 'webp']
+        image_codecs = ['png', 'jpeg', 'jpg', 'mjpeg']
         if codec_type == 'video':
             is_image &= codec_name in image_codecs
             have_video = True
@@ -92,12 +86,12 @@ async def check_stream(
     if isinstance(stream_parameters, VideoParameters):
         if not have_video:
             raise NoVideoSourceFound(path)
-        # H200 Tolerance: We don't crash on invalid proportion, we let NVENC handle scaling
         if not have_valid_video:
-             pass 
+            raise InvalidVideoProportion(
+                'Video proportion not found',
+            )
 
-        # Logic to adjust dimensions if needed, but H200 handles this via filters
-        ratio = float(original_width) / original_height if original_height else 1.77
+        ratio = float(original_width) / original_height
         new_w = min(original_width, stream_parameters.width)
         new_h = int(new_w / ratio)
 
@@ -123,14 +117,46 @@ async def check_stream(
         raise LiveStreamFound(path)
 
 
-# 🔥 OPTIMIZATION: This function was bottlenecking H200. 
-# We now just return the commands directly to trust the user's advanced flags.
 async def cleanup_commands(
     commands: List[str],
     process_name: Optional[str] = None,
     blacklist: Optional[List[str]] = None,
 ) -> List[str]:
-    return commands
+    try:
+        proc_res = await asyncio.create_subprocess_exec(
+            commands[0] if not process_name else process_name,
+            '-h',
+            'full',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(
+                proc_res.communicate(),
+                timeout=20,
+            )
+            result = stdout.decode('utf-8')
+        except (subprocess.TimeoutExpired, JSONDecodeError):
+            proc_res.kill()
+            raise
+        supported = re.findall(r'(?m)^ *(-\w+).*?\s+', result)
+        supported += ['-i']
+        new_commands = []
+        ignore_next = False
+
+        for v in commands:
+            if len(v) > 0:
+                if v[0] == '-':
+                    ignore_next = v not in supported or \
+                        blacklist is not None and v in blacklist
+
+                if not ignore_next:
+                    new_commands += [v]
+                elif v[0] != '-':
+                    ignore_next = False
+        return new_commands
+    except FileNotFoundError:
+        raise FFmpegError(f'{commands[0]} not installed')
 
 
 def build_command(
@@ -144,46 +170,40 @@ def build_command(
 ) -> List[str]:
     if not path:
         return []
-    
-    # Parse parameters from Call.py
-    command_params = _get_stream_params(ffmpeg_parameters)
+    command = _get_stream_params(ffmpeg_parameters)
 
-    # Determine if we are processing Video or Audio
     if isinstance(stream_parameters, VideoParameters):
-        custom_args = command_params['video']
+        command = command['video']
     else:
-        custom_args = command_params['audio']
+        command = command['audio']
 
     ffmpeg_command: List = [name]
 
-    # 🔥 H200 INJECTION: Hardware Acceleration for INPUT decoding
-    # This ensures decoding happens on the GPU before filters are applied
-    if name == 'ffmpeg':
-        ffmpeg_command += ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
-        
-        # Optimize Threading for H200 vCPUs
-        ffmpeg_command += ['-threads', '12']
+    ffmpeg_command += command['start']
 
-    # Add 'start' parameters (before input)
-    ffmpeg_command += custom_args['start']
-
-    # Network optimizations
     if not os.path.exists(path) \
             and not is_livestream\
             and name == 'ffmpeg':
         ffmpeg_command += [
-            '-reconnect', '1',
-            '-reconnect_at_eof', '1',
-            '-reconnect_streamed', '1',
-            '-reconnect_delay_max', '4', # Increased for buffer safety
+            '-reconnect',
+            '1',
+            '-reconnect_at_eof',
+            '1',
+            '-reconnect_streamed',
+            '1',
+            '-reconnect_delay_max',
+            '2',
         ]
 
     if name == 'ffprobe':
         ffmpeg_command += [
-            '-v', 'error',
-            '-show_entries', 'stream=width,height,codec_type,codec_name',
+            '-v',
+            'error',
+            '-show_entries',
+            'stream=width,height,codec_type,codec_name',
             '-show_format',
-            '-of', 'json',
+            '-of',
+            'json',
         ]
 
     if before_commands:
@@ -198,27 +218,12 @@ def build_command(
         '-i',
         f'{path}' if name == 'ffmpeg' else path,
     ]
-    
-    # Add 'mid' parameters (filters, map, etc.)
-    ffmpeg_command += custom_args['mid']
+    ffmpeg_command += command['mid']
 
     if name == 'ffmpeg':
-        # Check if user provided codec flags to avoid conflicts
-        user_provided_codec = False
-        all_user_flags = custom_args['start'] + custom_args['mid'] + custom_args['end']
-        for flag in all_user_flags:
-            if '-c:v' in flag or '-codec:v' in flag or '-c:a' in flag or 'nvenc' in flag:
-                user_provided_codec = True
-                break
-        
-        # If user didn't provide specific codecs, use default RAW (safe mode)
-        # If user DID provide NVENC (from Call.py), we skip this to let NVENC take over
-        if not user_provided_codec:
-            ffmpeg_command += _build_ffmpeg_options(stream_parameters)
+        ffmpeg_command += _build_ffmpeg_options(stream_parameters)
 
-    # Add 'end' parameters (output settings)
-    ffmpeg_command += custom_args['end']
-    
+    ffmpeg_command += command['end']
     if name == 'ffmpeg':
         ffmpeg_command.append('pipe:1')
 
@@ -232,21 +237,16 @@ def _get_stream_params(command: Optional[str]):
 
     if command:
         for part in shlex.split(command):
-            # Intelligent parsing for complex flags (like -c:v)
-            if part.startswith('-') and part[1:] in ['audio', 'video']:
-                # This handles custom internal flags if any
-                arg_name = part[1:] 
-                if arg_name in arg_names:
-                    current_arg = arg_name
+            arg_name = part[2:]
+            if arg_name in arg_names:
+                current_arg = arg_name
             else:
                 command_args[current_arg].append(part)
-                
     command_args = {
         command: _extract_stream_params(command_args[command])
         for command in command_args
     }
 
-    # Merge base args into audio/video args
     for arg in arg_names[1:]:
         for x in command_args[arg_names[0]]:
             command_args[arg][x] += command_args[arg_names[0]][x]
@@ -257,18 +257,16 @@ def _get_stream_params(command: Optional[str]):
 
 
 def _extract_stream_params(command: List[str]):
-    # Maps flags to position in command: start (pre-input), mid (filters), end (output)
     arg_names = ['start', 'mid', 'end']
     command_args: Dict = {arg: [] for arg in arg_names}
-    current_arg = arg_names[1] # Default to MID (safest for filters)
+    current_arg = arg_names[0]
 
     for part in command:
-        # Simple heuristic: if it looks like a position flag, switch
-        # Otherwise append to current position
-        # Note: Call.py usually passes raw strings, so we default everything to 'end' 
-        # or 'mid' unless specifically split. 
-        # For NVENC, usually putting everything in 'mid' or 'end' works best.
-        command_args['end'].append(part)
+        arg_name = part[3:]
+        if arg_name in arg_names:
+            current_arg = arg_name
+        else:
+            command_args[current_arg].append(part)
 
     return command_args
 
@@ -276,9 +274,6 @@ def _extract_stream_params(command: List[str]):
 def _build_ffmpeg_options(
         stream_parameters: Union[AudioParameters, VideoParameters],
 ) -> List[str]:
-    # This is the FALLBACK/DEFAULT generator.
-    # It is ONLY used if you do NOT provide NVENC flags in Call.py
-    
     log_level = logging.getLogger('ffmpeg').level
     ffmpeg_level = 'info' if log_level == logging.DEBUG else 'quiet'
 
