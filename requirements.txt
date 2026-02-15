@@ -95,3 +95,4 @@ scikit-image
 
 # ===== YouTube Search =====
 git+https://github.com/q058961234-web/youtube-search-python.git
+py-yt-search
