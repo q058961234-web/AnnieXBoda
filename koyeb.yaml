@@ -1,0 +1,28 @@
+type: web
+name: anniexboda
+project: superb-nelli
+lang: docker
+docker:
+  dockerfile: Dockerfile
+env:
+  OLLAMA_HOST: 0.0.0.0
+  OLLAMA_MODELS: /data/ollama
+instance_type: h200
+regions:
+  - was
+volumes:
+  - id: deepseek_data
+    path: /data/ollama
+    size: 50
+ports:
+  - port: 8000
+    protocol: http
+routes:
+  - path: /
+    port: 8000
+health_checks:
+  - port: 8000
+    path: /health
+    interval: 30
+    timeout: 5
+    restart_limit: 3
