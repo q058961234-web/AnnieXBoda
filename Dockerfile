@@ -18,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # ==================================================
-# 🛠️ تسطيب الأدوات
+# 🛠️ تسطيب الأدوات (Node.js ضروري لفك تشفير يوتيوب)
 # ==================================================
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -27,6 +27,7 @@ RUN apt-get update && apt-get upgrade -y && \
     libgl1 libglib2.0-0 libsm6 libxext6 \
     imagemagick ghostscript libsndfile1 fontconfig \
     build-essential libffi-dev cmake \
+    # 🔥 Node.js (السر لفك التشفير)
     pciutils lshw nodejs npm && \
     # إضافة بايثون 3.13
     add-apt-repository ppa:deadsnakes/ppa -y && \
@@ -62,20 +63,19 @@ RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpe
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # ==================================================
-# 🐍 تسطيب المكتبات (الحل هنا)
+# 🐍 تسطيب المكتبات
 # ==================================================
 COPY requirements.txt .
 
 # 1. تنظيف المتطلبات
 RUN grep -v -i '^py-tgcalls\|pytgcalls' requirements.txt > filtered.txt
 
-# 2. تسطيب المتطلبات مع تجاهل ملفات النظام (--ignore-installed)
-# ده اللي هيحل مشكلة blinker وأي تعارض تاني
+# 2. تسطيب الأساسيات
 RUN pip install --no-cache-dir --break-system-packages --ignore-installed -r filtered.txt
 
-# 3. تسطيب المكتبات الثقيلة (بنفس الطريقة للأمان)
+# 3. تسطيب المكتبات الثقيلة + py-yt-search
 RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
-    "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy \
+    "numpy>=2.0.0" opencv-python-headless rembg[gpu] uvloop g4f curl_cffi ollama moviepy py-yt-search \
     https://github.com/yt-dlp/yt-dlp/archive/master.zip
 
 # ==================================================
