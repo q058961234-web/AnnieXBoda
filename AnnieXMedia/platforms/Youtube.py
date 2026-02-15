@@ -1,10 +1,10 @@
 # file: AnnieXMedia/platforms/Youtube.py
-# 🚀 H200 Native Speed Edition (2026) - The "Flash" Version
+# 🚀 H200 Native Speed Edition (2026) - Fixed Loop Error
 # Features:
 # 1. Native Multi-Threading (No Aria2 needed).
 # 2. Instant Live Stream Extraction (HLS Low Latency).
 # 3. RAM Disk Processing (/dev/shm).
-# 4. Full Class Coverage (No Crashes).
+# 4. Lazy Loading Network (Fixes RuntimeError).
 
 import asyncio
 import logging
@@ -38,14 +38,7 @@ RAM_DISK = "/dev/shm/AnnieDownloads"
 _thread_pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 _extract_sema = asyncio.Semaphore(50) # Allow high concurrency
 
-# 🌐 High-Performance Networking (Keep-Alive)
-_aio_connector = aiohttp.TCPConnector(
-    limit=1000,
-    ttl_dns_cache=300,
-    use_dns_cache=True,
-    ssl=False,
-    keepalive_timeout=120
-)
+# 🌐 High-Performance Networking (Lazy Loaded)
 _aio_session: Optional[aiohttp.ClientSession] = None
 
 # 🧠 Smart Caching
@@ -67,10 +60,21 @@ def get_cookie_file() -> Optional[str]:
     return None
 
 async def _ensure_session() -> aiohttp.ClientSession:
+    """
+    Creates the session ONLY when needed, inside a running loop.
+    This fixes the 'RuntimeError: no running event loop'.
+    """
     global _aio_session
     if _aio_session is None or _aio_session.closed:
+        connector = aiohttp.TCPConnector(
+            limit=1000,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            ssl=False,
+            keepalive_timeout=120
+        )
         _aio_session = aiohttp.ClientSession(
-            connector=_aio_connector,
+            connector=connector,
             json_serialize=_dumps_bytes
         )
     return _aio_session
