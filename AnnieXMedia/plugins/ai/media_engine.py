@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from rembg import remove
-from moviepy.editor import VideoFileClip, vfx
+from moviepy import VideoFileClip, vfx
 
 # ------------------------------------------------------------------
 # CONFIGURATION
