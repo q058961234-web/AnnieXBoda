@@ -1,6 +1,6 @@
 # Authored By Certified Coders © 2026
-# System: Call Controller (PyTgCalls v3.0 Native)
-# H200 Optimized Edition - Zero Latency - Auto Reconnect
+# System: Call Controller (PyTgCalls v3.0 Custom Kernel)
+# H200 Optimized Edition - 60FPS Video - Stereo Audio
 
 import asyncio
 from datetime import datetime, timedelta
@@ -54,7 +54,7 @@ autoend = {}
 counter = {}
 
 # ===============================
-# Helper Functions (H200 Optimized)
+# Helper Functions (H200 Custom Kernel)
 # ===============================
 
 async def get_direct_link(videoid: str, video: bool = False):
@@ -67,7 +67,6 @@ async def get_direct_link(videoid: str, video: bool = False):
         "no_warnings": True,
         "geo_bypass": True,
         "nocheckcertificate": True,
-        # H200 Optimization: Fast extraction
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}}
     }
     try:
@@ -81,44 +80,49 @@ async def get_direct_link(videoid: str, video: bool = False):
 
 def _build_stream(path: str, video: bool = False, ffmpeg_opts: str = "") -> MediaStream:
     """
-    Constructs a MediaStream object compatible with PyTgCalls v3.0.
-    H200 OPTIMIZED: Uses 8 threads and ultrafast presets.
+    Constructs a MediaStream object compatible with YOUR Custom PyTgCalls v3.0.
+    OPTIMIZED FOR: 60FPS Video + Stereo Audio (H200 Core).
     """
     path = str(path)
     is_url = path.startswith("http")
     
-    # 1. Base FFmpeg parameters (H200 Tuning)
-    # -threads 8: Utilize H200 cores
-    # -preset ultrafast: Minimum CPU latency
-    # -tune zerolatency: Instant streaming
+    # 1. Audio Params (Matching your Custom AudioParameters)
+    # -ac 2: Forces Stereo (Since you unlocked channels=2)
+    # -ar 48000: Studio Quality
+    # -b:a 192k: High Bitrate
+    audio_flags = "-ac 2 -ar 48000 -b:a 192k -af \"volume=1.5\" " 
+
+    # 2. Video Params (Matching your Custom VideoQuality)
+    # -r 60: Forces 60 FPS (Since you unlocked frame_rate=60)
+    # -preset ultrafast: Critical for 60FPS realtime encoding on H200
+    video_flags = "-r 60 -preset ultrafast -tune zerolatency " if video else ""
+
+    # 3. Base Optimization Flags
     base_flags = (
-        "-threads 8 "
-        "-probesize 32M -analyzeduration 0 "
+        "-threads 16 " # Unleash 16 Cores for 60FPS
+        "-probesize 64M -analyzeduration 0 " # Bigger buffer for 60FPS stream
         "-fflags +genpts+igndts+nobuffer+fastseek -sync ext "
-        "-preset ultrafast -tune zerolatency "
     )
     
-    # 2. Input specific flags (Network Shield)
+    # 4. Network Shield
     if is_url:
-        # Stronger Reconnection Logic for 2026 Internet Standards
         base_flags += (
             "-reconnect 1 -reconnect_streamed 1 "
             "-reconnect_on_network_error 1 -reconnect_delay_max 5 "
-            "-rw_timeout 15000000 "
+            "-rw_timeout 20000000 " # Increased timeout for high bitrate
         )
     else:
-        # Local files must be read at native speed (-re)
         base_flags += "-re "
 
-    # 3. Add Custom Opts (like Seek -ss)
-    final_ffmpeg = base_flags + ffmpeg_opts
+    # Combine all flags
+    final_ffmpeg = base_flags + audio_flags + video_flags + ffmpeg_opts
 
-    # 4. Return the Universal MediaStream Object
     return MediaStream(
         media_path=path,
-        audio_parameters=AudioQuality.HIGH, # Crystal Clear
-        video_parameters=VideoQuality.HD_720p, # HD Ready
-        # Strict Flags based on requested mode
+        # ✅ Using your Custom Unlocked Classes
+        audio_parameters=AudioQuality.STUDIO, # Should map to your modified 48k/2ch
+        video_parameters=VideoQuality.HD_720p, # Should map to your modified 720p/60fps
+        
         video_flags=MediaStream.Flags.REQUIRED if video else MediaStream.Flags.IGNORE,
         audio_flags=MediaStream.Flags.REQUIRED,
         ffmpeg_parameters=final_ffmpeg,
@@ -195,6 +199,9 @@ class Call:
 
     # --- Advanced Controls (Seek & Skip) ---
     async def seek_stream(self, chat_id: int, file_path: str, to_seek: int, duration: int, mode: str) -> None:
+        """
+        Implements seeking via FFmpeg offset parameter.
+        """
         assistant = await group_assistant(self, chat_id)
         ffmpeg_opts = f"-ss {to_seek} "
         is_video = (mode == "video")
