@@ -1,29 +1,32 @@
-# plugins/ai/handlers.p
+# plugins/ai/handlers.py
 # Authored By Certified Coders (c) 2026
-# AI Handler System - Pure Text Edition
-# Features: Streaming, Session Management, Admin Control.
+# AI Handler System - Stable Edition (Pyrogram v2+ Supported)
+# Fixes: Enum Migration, FloodWait Protection, Session Safety.
 
 import os
 import re
+import time
 import logging
 import asyncio
 from typing import Dict, Optional, Union, Set
 
 # Pyrogram
 from pyrogram import filters, Client
+# ✅ تصحيح: استيراد الثوابت من enums
+from pyrogram.enums import ChatAction, ParseMode
 from pyrogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    ChatAction
+    InlineKeyboardButton
 )
+from pyrogram.errors import FloodWait, MessageNotModified
 
 # Project Imports
 from AnnieXMedia import app
 from config import OWNER_ID
 
-# Engine Imports (Text Only)
+# Engine Imports (Ensure engine.py exists in the same folder)
 from .engine import (
     ask_ollama_stream,
     clear_user_memory,
@@ -46,12 +49,12 @@ else:
 SUDO_FILTER = filters.user(list(SUDO_USERS))
 
 # ------------------------------------------------------------------
-# SESSION MANAGEMENT CLASS
+# SESSION MANAGEMENT CLASS (ROBUST)
 # ------------------------------------------------------------------
 class SessionManager:
     """
     Manages active chat sessions for 'Permanent AI' mode.
-    Handles timeouts and chat isolation.
+    Handles timeouts and chat isolation safely.
     """
     def __init__(self):
         # Structure: {user_id: {"chat_id": int, "task": asyncio.Task}}
@@ -95,16 +98,18 @@ class SessionManager:
             await asyncio.sleep(60)
             
             async with self._lock:
-                if user_id in self._sessions:
+                # Double check inside lock before deleting
+                if user_id in self._sessions and self._sessions[user_id]["chat_id"] == chat_id:
                     del self._sessions[user_id]
-            
-            try:
-                await client.send_message(chat_id, "تم انهاء وضع الذكاء الدائم لعدم وجود رد.")
-            except Exception as e:
-                logger.warning(f"Failed to send timeout message: {e}")
+                    try:
+                        await client.send_message(chat_id, "⚠️ تم انهاء وضع الذكاء الدائم لعدم وجود رد.")
+                    except Exception:
+                        pass
 
         except asyncio.CancelledError:
             pass
+        except Exception as e:
+            logger.error(f"Session Monitor Error: {e}")
 
 # Initialize Manager
 SESSIONS = SessionManager()
@@ -138,7 +143,7 @@ async def enable_permanent_ai(client: Client, message: Message):
     
     await SESSIONS.start_session(client, user_id, chat_id)
     await message.reply_text(
-        "تم تفعيل وضع الذكاء الدائم.\n"
+        "🧠 **تم تفعيل وضع الذكاء الدائم.**\n"
         "سيتم الرد عليك في هذا الجروب فقط.\n"
         "سيتم الاغلاق تلقائيا بعد دقيقة من الصمت."
     )
@@ -149,7 +154,7 @@ async def disable_permanent_ai(client: Client, message: Message):
     
     if user_id in SESSIONS._sessions:
         await SESSIONS.end_session(user_id)
-        await message.reply_text("تم ايقاف الذكاء الدائم.")
+        await message.reply_text("🛑 تم ايقاف الذكاء الدائم.")
     else:
         await message.reply_text("الوضع غير مفعل اصلا.")
 
@@ -159,7 +164,7 @@ async def disable_permanent_ai(client: Client, message: Message):
 @app.on_message(filters.regex(r"^(مسح ذاكرتي)$") & ~filters.bot)
 async def clear_memory_handler(client: Client, message: Message):
     clear_user_memory(message.from_user.id)
-    await message.reply_text("تم مسح سجل المحادثة الخاص بك.")
+    await message.reply_text("🗑️ تم مسح سجل المحادثة الخاص بك.")
 
 # ------------------------------------------------------------------
 # ADMIN CONTROL PANEL
@@ -167,21 +172,21 @@ async def clear_memory_handler(client: Client, message: Message):
 @app.on_message(filters.regex(r"^(اوامر الذكاء|كيب ذكاء)$") & SUDO_FILTER)
 async def admin_panel(client: Client, message: Message):
     status = get_engine_status()
-    state_text = "مفعل" if status["enabled"] else "معطل"
+    state_text = "مفعل ✅" if status["enabled"] else "معطل ❌"
     
     text = (
-        "**لوحة تحكم الذكاء الاصطناعي**\n\n"
+        "**🤖 لوحة تحكم الذكاء الاصطناعي**\n\n"
         f"• الحالة: {state_text}\n"
-        f"• المحرك: {status['model']}\n"
-        f"• المستخدمين النشطين: {status['active_users']}"
+        f"• المحرك: `{status['model']}`\n"
+        f"• المستخدمين النشطين: `{status['active_users']}`"
     )
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("اوامر المستخدمين", callback_data="ai_help")],
-        [InlineKeyboardButton("تشغيل / ايقاف", callback_data="ai_toggle")],
-        [InlineKeyboardButton("تنظيف الذاكرة", callback_data="ai_flush")],
-        [InlineKeyboardButton("اعادة تشغيل", callback_data="ai_reboot")],
-        [InlineKeyboardButton("اغلاق", callback_data="ai_close")]
+        [InlineKeyboardButton("📚 اوامر المستخدمين", callback_data="ai_help")],
+        [InlineKeyboardButton("⏯️ تشغيل / ايقاف", callback_data="ai_toggle")],
+        [InlineKeyboardButton("🧹 تنظيف الذاكرة", callback_data="ai_flush")],
+        [InlineKeyboardButton("🔄 اعادة تشغيل", callback_data="ai_reboot")],
+        [InlineKeyboardButton("❌ اغلاق", callback_data="ai_close")]
     ])
     
     await message.reply_text(text, reply_markup=keyboard)
@@ -197,7 +202,7 @@ async def admin_callbacks(client: Client, query: CallbackQuery):
 
     if data == "ai_help":
         help_text = (
-            "اوامر المستخدم:\n"
+            "🛠️ **اوامر المستخدم:**\n"
             "- ذكاء <سؤال>\n"
             "- ذكاء دائم\n"
             "- كفاية (لانهاء الوضع الدائم)\n"
@@ -210,10 +215,10 @@ async def admin_callbacks(client: Client, query: CallbackQuery):
         new_state = not status["enabled"]
         set_engine_state(new_state)
         await query.answer("تم تغيير الحالة.", show_alert=True)
-        new_status_text = "مفعل" if new_state else "معطل"
+        new_status_text = "مفعل ✅" if new_state else "معطل ❌"
         try:
             await query.message.edit_text(
-                f"**لوحة تحكم الذكاء الاصطناعي**\n\n• الحالة: {new_status_text}\n• المحرك: {status['model']}",
+                f"**🤖 لوحة تحكم الذكاء الاصطناعي**\n\n• الحالة: {new_status_text}\n• المحرك: `{status['model']}`",
                 reply_markup=query.message.reply_markup
             )
         except:
@@ -231,12 +236,12 @@ async def admin_callbacks(client: Client, query: CallbackQuery):
         await query.message.delete()
 
 # ------------------------------------------------------------------
-# MAIN AI MESSAGE HANDLER
+# MAIN AI MESSAGE HANDLER (STREAMING)
 # ------------------------------------------------------------------
 @app.on_message(filters.text & ~filters.bot, group=60)
 async def main_ai_handler(client: Client, message: Message):
     """
-    Main handler for text processing.
+    Main handler for text processing with Smart Streaming & FloodWait Protection.
     """
     engine_status = get_engine_status()
     # If engine disabled, ignore everyone except sudo
@@ -270,17 +275,39 @@ async def main_ai_handler(client: Client, message: Message):
         else:
             return
 
-    # Send placeholder
-    await client.send_chat_action(chat_id, ChatAction.TYPING)
-    wait_msg = await message.reply_text("...")
+    # Send placeholder and Action
+    try:
+        # ✅ FIX: Using ChatAction from Enums
+        await client.send_chat_action(chat_id, ChatAction.TYPING)
+        # ✅ تم التعديل: تغيير الرسالة إلى "جـاري التفكير."
+        wait_msg = await message.reply_text("جـاري التفكير.")
+    except Exception as e:
+        logger.warning(f"Could not send placeholder: {e}")
+        return
+
+    # 🛡️ FloodWait Protection Variables
+    last_update_time = 0
+    update_interval = 1.5  # Seconds between edits (Telegram limit is roughly 1s)
 
     # Callback to update message in real-time
     async def update_response_text(text: str):
+        nonlocal last_update_time
+        now = time.time()
+        
+        # Only edit if enough time passed OR text is very short (start)
+        if (now - last_update_time < update_interval) and len(text) > 20:
+            return
+
         try:
             if text and text != wait_msg.text:
                 # Telegram limit is 4096, safety buffer
                 safe_text = text[:4000]
-                await wait_msg.edit(safe_text)
+                await wait_msg.edit_text(safe_text, parse_mode=ParseMode.MARKDOWN)
+                last_update_time = now
+        except MessageNotModified:
+            pass # Ignore if text hasn't changed enough
+        except FloodWait as f:
+            await asyncio.sleep(f.value) # Wait nicely if hit
         except Exception:
             pass
 
@@ -292,10 +319,13 @@ async def main_ai_handler(client: Client, message: Message):
             on_update=update_response_text
         )
 
-        # Final update
+        # Final Force Update
         if final_reply and final_reply != wait_msg.text:
-            await wait_msg.edit(final_reply[:4000])
+            await wait_msg.edit_text(final_reply[:4000], parse_mode=ParseMode.MARKDOWN)
             
     except Exception as e:
         logger.error(f"Handler Error: {e}")
-        await wait_msg.edit("حدث خطأ اثناء المعالجة.")
+        try:
+            await wait_msg.edit_text("❌ حدث خطأ اثناء المعالجة.")
+        except:
+            pass
