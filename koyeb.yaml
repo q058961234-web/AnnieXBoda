@@ -23,6 +23,6 @@ routes:
 health_checks:
   - port: 8000
     path: /health
-    interval: 30
-    timeout: 5
-    restart_limit: 3
+    interval: 300     # خليناه 300 ثانية (5 دقايق) عشان يلحق يحمل
+    timeout: 30       # مهلة الرد 30 ثانية
+    restart_limit: 10 # عدد محاولات أكبر قبل القتل
