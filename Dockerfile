@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
 # ==================================================
-# ⚡ إعدادات البيئة وحفظ الموديلات
+# ⚡ إعدادات البيئة
 # ==================================================
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,20 +14,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # ==================================================
-# 🛠️ تثبيت أدوات النظام (تم إصلاح الخطأ هنا)
+# 🛠️ تثبيت أدوات النظام (تم إضافة zstd وإصلاح المسار)
 # ==================================================
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    # أدوات أساسية (Git و Curl ضروريين جداً)
-    curl git wget gnupg2 unzip zip procps \
+    # ✅ تم إضافة zstd هنا عشان Ollama يرضى يتسطب
+    curl git wget gnupg2 unzip zip procps zstd \
     # أدوات البناء
     build-essential libffi-dev zlib1g-dev \
-    # مكتبات الميديا (تم حذف libgl1-mesa-glx المعطوبة)
+    # مكتبات الميديا
     ffmpeg libsm6 libxext6 libgl1 libglib2.0-0 \
     imagemagick ghostscript \
     libsndfile1 fontconfig && \
-    # إصلاح ImageMagick
-    sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml || true && \
+    # ✅ إصلاح ImageMagick (استخدام * ليقبل الإصدار 6 أو 7)
+    sed -i 's/none/read,write/g' /etc/ImageMagick-*/policy.xml || true && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ==================================================
