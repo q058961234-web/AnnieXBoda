@@ -11,7 +11,7 @@ from typing import Union, Optional, Tuple
 from yt_dlp import YoutubeDL
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
-from youtubesearchpython.__future__ import VideosSearch
+from youtubesearchpython.aio import VideosSearch
 
 import config
 
